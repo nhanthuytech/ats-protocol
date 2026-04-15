@@ -1,0 +1,17 @@
+name: ats_flutter_example
+description: Example Flutter app demonstrating ATS Protocol integration.
+publish_to: none
+version: 1.0.0
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ats_flutter:
+    path: ../
+
+flutter:
+  assets:
+    - assets/ats/flow_graph.json

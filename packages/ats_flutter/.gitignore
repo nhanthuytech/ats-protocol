@@ -1,0 +1,28 @@
+# .gitignore for ats-protocol repo
+
+# Dart/Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+*.g.dart
+pubspec.lock
+
+# ATS runtime logs (never commit logs)
+.ats/logs/
+**/assets/ats/logs/
+
+# ATS flow graph IS committed (it's the knowledge base)
+# .ats/flow_graph.json  ← intentionally NOT ignored
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# macOS
+.DS_Store
+
+# Generated skill install artifacts in example
+example/.agents/
+example/CLAUDE.md

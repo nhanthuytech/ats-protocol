@@ -1,0 +1,6 @@
+# ATS Configuration File
+# Read more at: https://github.com/nhanthuytech/ats-protocol
+#
+# graph-dir: .ats                     # Where flow_graph.json is stored
+# output-dir: lib/generated/ats       # Where the compiled code is placed
+# output-file: ats_generated.g.dart   # The name of the compiled dart file

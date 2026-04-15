@@ -1,0 +1,82 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/nhanthuytech/ats-protocol/spec/flow_graph_schema.json",
+  "title": "ATS Flow Graph",
+  "description": "Schema for flow_graph.json — the knowledge graph used by ATS Protocol to map business logic flows to code.",
+  "type": "object",
+  "required": ["ats_version", "project", "flows"],
+  "properties": {
+    "ats_version": {
+      "type": "string",
+      "description": "ATS protocol version. Follows semver.",
+      "example": "1.0.0"
+    },
+    "project": {
+      "type": "string",
+      "description": "Project name. Should match the Flutter package name.",
+      "example": "my_flutter_app"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of the last update. AI updates this when modifying the graph."
+    },
+    "flows": {
+      "type": "object",
+      "description": "Map of flow names to their definitions. Flow names should be SCREAMING_SNAKE_CASE.",
+      "additionalProperties": {
+        "$ref": "#/definitions/FlowEntry"
+      },
+      "example": {
+        "PAYMENT_FLOW": {},
+        "AUTH_FLOW": {}
+      }
+    }
+  },
+  "definitions": {
+    "FlowEntry": {
+      "type": "object",
+      "required": ["description", "active", "classes"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of what this flow represents. Written by AI after understanding the feature."
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether ATS.trace() logs are enabled for this flow. AI sets this to true when debugging, false when done.",
+          "default": false
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional tags for categorization.",
+          "example": ["critical", "3rd-party", "auth"]
+        },
+        "classes": {
+          "type": "object",
+          "description": "Maps class names to the list of method names in that class that belong to this flow. A class can appear in multiple flows (at different methods).",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "List of method names that belong to this flow."
+          },
+          "example": {
+            "PaymentService": ["processPayment", "refund", "validateCard"],
+            "CheckoutBloc": ["onCheckoutStarted", "onPaymentConfirmed"]
+          }
+        },
+        "known_issues": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "AI-maintained list of known bugs or gotchas in this flow."
+        },
+        "last_debugged": {
+          "type": "string",
+          "format": "date",
+          "description": "ISO 8601 date of the last debug session for this flow. AI updates this."
+        }
+      }
+    }
+  }
+}

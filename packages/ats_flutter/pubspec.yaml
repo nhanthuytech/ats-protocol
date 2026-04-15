@@ -1,0 +1,24 @@
+name: ats_flutter
+description: ATS Protocol SDK for Flutter — AI-driven flow-based telemetry. Gives AI Coding Agents (Cursor, Claude, Windsurf) structured knowledge of your project's business logic flows.
+version: 0.1.0
+homepage: https://github.com/nhanthuytech/ats-protocol
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  path_provider: ^2.1.0
+  args: ^2.4.0
+  path: ^1.9.0
+  yaml: ^3.1.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+executables:
+  ats: ats

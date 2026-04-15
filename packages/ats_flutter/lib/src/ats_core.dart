@@ -1,0 +1,155 @@
+import 'package:flutter/foundation.dart';
+
+import 'flow_registry.dart';
+import 'log_writer.dart';
+
+/// ATS — Agentic Telemetry Standard
+///
+/// The main entry point for the ATS protocol in Flutter.
+/// Designed to be used by AI Coding Agents (Cursor, Claude, Windsurf)
+/// to instrument and understand project business logic flows.
+///
+/// ## How AI agents use this:
+///
+/// 1. Read `assets/ats/flow_graph.json` to understand which classes belong
+///    to which flows.
+/// 2. Call `ATS.trace()` in every method of a class (done once, never removed).
+/// 3. Set `flow.active = true` in flow_graph.json + hot restart to enable logs.
+/// 4. After debugging, set `flow.active = false` — logs become no-ops instantly.
+///
+/// ## Zero production overhead:
+///
+/// Every method in this class returns immediately if [kReleaseMode] is true.
+/// ATS is completely invisible in production builds.
+class ATS {
+  static FlowRegistry? _registry;
+  static LogWriter? _writer;
+  static bool _initialized = false;
+
+  // Private constructor — ATS is a static-only class.
+  ATS._();
+
+  // ─────────────────────────────────────────────────
+  // Initialization
+  // ─────────────────────────────────────────────────
+
+  /// Natively initializing the ATS protocol using Code-Gen Data.
+  ///
+  /// Do NOT call this directly. Use `AtsGenerated.init()` from your
+  /// `lib/ats_generated.dart` file automatically created by `ats sync`.
+  static Future<void> internalInit(
+    Map<String, List<String>> staticMap,
+    List<String> activeFlows,
+  ) async {
+    if (kReleaseMode) return;
+    if (_initialized) return;
+
+    _registry = FlowRegistry.fromNative(staticMap, activeFlows);
+    _writer = await LogWriter.create();
+    _initialized = true;
+  }
+
+  /// [DEPRECATED] — ATS V3 uses Dart CodeGen instead of dart-defines.
+  ///
+  /// Call `AtsGenerated.init()` instead.
+  @Deprecated('Use AtsGenerated.init() instead.')
+  static Future<void> init({String? customPath}) async {
+    if (kReleaseMode) return;
+    if (_initialized) return;
+
+    _registry = await FlowRegistry.load(customPath: customPath);
+    _writer = await LogWriter.create();
+    _initialized = true;
+  }
+
+  // ─────────────────────────────────────────────────
+  // Core API
+  // ─────────────────────────────────────────────────
+
+  /// Trace a method call.
+  ///
+  /// **AI agents call this at the start of every method — once, permanently.**
+  /// It is a complete no-op if:
+  /// - Running in release mode
+  /// - ATS is not initialized
+  /// - The method is not registered in any active flow
+  ///
+  /// ```dart
+  /// Future<void> processPayment(PaymentRequest req) async {
+  ///   ATS.trace('PaymentService', 'processPayment', data: req.toJson());
+  ///   // ... rest of the method
+  /// }
+  /// ```
+  ///
+  /// [className] — The class containing this method (exact name, no generics).
+  /// [methodName] — The method name as a string.
+  /// [data] — Optional payload. Must be JSON-serializable. Truncated if too large.
+  static void trace(
+    String className,
+    String methodName, {
+    dynamic data,
+  }) {
+    if (kReleaseMode || !_initialized || _registry == null) return;
+
+    final flows = _registry!.getFlowsForMethod(className, methodName);
+    if (flows.isEmpty)
+      return; // O(1) active check — inactive flows are not mapped.
+
+    for (final flow in flows) {
+      // Log to console — AI reads this from IDE run output
+      debugPrint('[ATS][$flow] $className.$methodName'
+          '${data != null ? ' | $data' : ''}');
+
+      // Log to file — persisted for later analysis
+      _writer?.writeAsync(
+        flow: flow,
+        className: className,
+        methodName: methodName,
+        data: data,
+      );
+    }
+  }
+
+  // Flow Control (Removed in V2)
+  // ─────────────────────────────────────────────────
+  // Note: Runtime memory toggling of flows via code is removed to enforce
+  // strict separation of design-time configuration and runtime execution.
+  // To toggle a flow: edit flow_graph.json, ensure `ats sync` runs, and Hot Restart.
+
+  // ─────────────────────────────────────────────────
+  // Introspection (AI uses these to understand state)
+  // ─────────────────────────────────────────────────
+
+  /// Returns true if the given flow is currently active.
+  static bool isActive(String flowName) {
+    if (kReleaseMode || !_initialized) return false;
+    return _registry?.isActive(flowName) ?? false;
+  }
+
+  /// Returns all flow names that are currently active.
+  static List<String> get activeFlows {
+    if (kReleaseMode || !_initialized) return [];
+    return _registry?.toDebugMap()['active_flows'] as List<String>? ?? [];
+  }
+
+  /// Returns a structured summary of all flows and their current state.
+  /// Useful for AI to understand the project at a glance.
+  ///
+  /// ```dart
+  /// debugPrint(ATS.summary.toString());
+  /// ```
+  static Map<String, dynamic>? get summary {
+    if (kReleaseMode || !_initialized) return null;
+    return _registry?.toDebugMap();
+  }
+
+  /// Returns the path where log files are written.
+  /// AI uses this to know where to look for logs on device/simulator.
+  static String? get logsDirPath {
+    if (kReleaseMode || !_initialized) return null;
+    return _writer?.logsDirPath;
+  }
+
+  /// Whether ATS has been successfully initialized.
+  static bool get isInitialized => _initialized && !kReleaseMode;
+}

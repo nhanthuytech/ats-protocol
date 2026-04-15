@@ -1,0 +1,67 @@
+{
+  "ats_version": "1.0.0",
+  "project": "ats_flutter_example",
+  "updated_at": "2026-04-15T14:20:28.885077",
+  "flows": {
+    "PAYMENT_FLOW": {
+      "description": "Handles the full checkout and payment lifecycle including VNPAY and mock gateway",
+      "active": false,
+      "tags": [
+        "critical"
+      ],
+      "classes": {
+        "PaymentService": [
+          "processPayment",
+          "refund",
+          "validateCard"
+        ],
+        "CheckoutBloc": [
+          "onCheckoutStarted",
+          "onPaymentConfirmed",
+          "onCheckoutFailed"
+        ],
+        "CartBloc": [
+          "onItemAdded",
+          "onCheckoutRequested"
+        ]
+      },
+      "known_issues": [],
+      "last_debugged": null
+    },
+    "AUTH_FLOW": {
+      "description": "User authentication: login, logout, and session refresh",
+      "active": false,
+      "tags": [
+        "auth"
+      ],
+      "classes": {
+        "AuthService": [
+          "login",
+          "logout",
+          "refreshToken"
+        ],
+        "UserService": [
+          "getUser",
+          "validateSession"
+        ]
+      },
+      "known_issues": [],
+      "last_debugged": null
+    },
+    "PRODUCT_FLOW": {
+      "description": "Product listing, search, and detail fetching from the catalog API",
+      "active": false,
+      "classes": {
+        "ProductRepository": [
+          "fetchProducts",
+          "fetchById",
+          "searchProducts"
+        ],
+        "ProductBloc": [
+          "onProductsRequested",
+          "onSearchChanged"
+        ]
+      }
+    }
+  }
+}
