@@ -1,15 +1,15 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/nhanthuytech/ats-protocol/spec/flow_graph_schema.json",
-  "title": "ATS Flow Graph",
-  "description": "Schema for flow_graph.json — the knowledge graph used by ATS Protocol to map business logic flows to code.",
+  "title": "ATS Flow Graph V4",
+  "description": "Schema for flow_graph.json — the DAG-based knowledge graph used by ATS Protocol to map business logic flows to code.",
   "type": "object",
   "required": ["ats_version", "project", "flows"],
   "properties": {
     "ats_version": {
       "type": "string",
       "description": "ATS protocol version. Follows semver.",
-      "example": "3.0.0"
+      "example": "4.0.0"
     },
     "project": {
       "type": "string",
@@ -26,10 +26,13 @@
       "description": "Map of flow names to their definitions. Flow names should be SCREAMING_SNAKE_CASE.",
       "additionalProperties": {
         "$ref": "#/definitions/FlowEntry"
-      },
-      "example": {
-        "PAYMENT_FLOW": {},
-        "AUTH_FLOW": {}
+      }
+    },
+    "edges": {
+      "type": "array",
+      "description": "Method-level call chain edges. Accumulated over time as AI discovers call paths during debugging.",
+      "items": {
+        "$ref": "#/definitions/Edge"
       }
     }
   },
@@ -40,12 +43,21 @@
       "properties": {
         "description": {
           "type": "string",
-          "description": "Human-readable description of what this flow represents. Written by AI after understanding the feature."
+          "description": "Human-readable description of what this flow represents."
         },
         "active": {
           "type": "boolean",
-          "description": "Whether ATS.trace() logs are enabled for this flow. AI sets this to true when debugging, false when done.",
+          "description": "Whether ATS.trace() logs are enabled for this flow.",
           "default": false
+        },
+        "depends_on": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Flow-level DAG: list of flow names this flow depends on. Must not form cycles."
+        },
+        "parent": {
+          "type": "string",
+          "description": "Parent flow name for sub-flow hierarchy. A flow can have at most one parent."
         },
         "tags": {
           "type": "array",
@@ -55,15 +67,18 @@
         },
         "classes": {
           "type": "object",
-          "description": "Maps class names to the list of method names in that class that belong to this flow. A class can appear in multiple flows (at different methods).",
+          "description": "Maps class names to method info. Supports both V3 array format and V4 object format.",
           "additionalProperties": {
-            "type": "array",
-            "items": { "type": "string" },
-            "description": "List of method names that belong to this flow."
-          },
-          "example": {
-            "PaymentService": ["processPayment", "refund", "validateCard"],
-            "CheckoutBloc": ["onCheckoutStarted", "onPaymentConfirmed"]
+            "oneOf": [
+              {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "V3 format: list of method names."
+              },
+              {
+                "$ref": "#/definitions/ClassEntry"
+              }
+            ]
           }
         },
         "known_issues": {
@@ -74,7 +89,82 @@
         "last_debugged": {
           "type": "string",
           "format": "date",
-          "description": "ISO 8601 date of the last debug session for this flow. AI updates this."
+          "description": "ISO 8601 date of the last debug session for this flow."
+        },
+        "sessions": {
+          "type": "array",
+          "description": "AI debug session history. Institutional memory across sessions.",
+          "items": {
+            "$ref": "#/definitions/SessionEntry"
+          }
+        }
+      }
+    },
+    "ClassEntry": {
+      "type": "object",
+      "required": ["methods"],
+      "properties": {
+        "methods": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of method names that belong to this flow."
+        },
+        "needs_verify": {
+          "type": "boolean",
+          "description": "If true, AI should verify source code matches graph before trusting it.",
+          "default": false
+        },
+        "last_verified": {
+          "type": "string",
+          "format": "date",
+          "description": "ISO 8601 date when AI last confirmed this class matches source code."
+        }
+      }
+    },
+    "Edge": {
+      "type": "object",
+      "required": ["from", "to", "type"],
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "Source method in 'ClassName.methodName' format."
+        },
+        "to": {
+          "type": "string",
+          "description": "Target method in 'ClassName.methodName' format."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["calls", "delegates", "emits", "navigates"],
+          "description": "Relationship type between methods."
+        },
+        "condition": {
+          "type": "string",
+          "description": "Optional condition when this edge is taken."
+        }
+      }
+    },
+    "SessionEntry": {
+      "type": "object",
+      "required": ["date", "action", "note"],
+      "properties": {
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "ISO 8601 date of the session."
+        },
+        "action": {
+          "type": "string",
+          "enum": ["debug", "refactor", "update", "feature"],
+          "description": "What kind of work was done."
+        },
+        "note": {
+          "type": "string",
+          "description": "Brief description of what was done and why."
+        },
+        "resolved": {
+          "type": "boolean",
+          "description": "Whether the issue was resolved in this session."
         }
       }
     }

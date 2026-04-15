@@ -74,6 +74,8 @@ class ATS {
   /// - ATS is not initialized
   /// - The method is not registered in any active flow
   ///
+  /// Log format: `[ATS][FLOW_NAME][#SEQ][dDEPTH] Class.method | {data}`
+  ///
   /// ```dart
   /// Future<void> processPayment(PaymentRequest req) async {
   ///   ATS.trace('PaymentService', 'processPayment', data: req.toJson());
@@ -95,9 +97,13 @@ class ATS {
     if (flows.isEmpty)
       return; // O(1) active check — inactive flows are not mapped.
 
+    final seq = _nextSeq();
+    final depth = _currentDepth();
+    final seqStr = seq.toString().padLeft(3, '0');
+
     for (final flow in flows) {
       // Log to console — AI reads this from IDE run output
-      debugPrint('[ATS][$flow] $className.$methodName'
+      debugPrint('[ATS][$flow][#$seqStr][d$depth] $className.$methodName'
           '${data != null ? ' | $data' : ''}');
 
       // Log to file — persisted for later analysis
@@ -109,6 +115,35 @@ class ATS {
       );
     }
   }
+
+  // ─────────────────────────────────────────────────
+  // Sequencer — tracks execution order and call depth
+  // ─────────────────────────────────────────────────
+
+  static int _seq = 0;
+
+  static int _nextSeq() => ++_seq;
+
+  /// Best-effort depth estimation from stack trace frames.
+  /// Counts ATS.trace() appearances in the call stack.
+  static int _currentDepth() {
+    final frames = StackTrace.current.toString().split('\n');
+    // Count how many frames are within the user's lib/ code
+    // Use a simple heuristic: count frames between first and last app frame
+    int appFrames = 0;
+    for (final frame in frames) {
+      if (frame.contains('package:') &&
+          !frame.contains('package:ats_flutter') &&
+          !frame.contains('package:flutter')) {
+        appFrames++;
+      }
+    }
+    // Normalize: 1-2 app frames = d0, 3-4 = d1, etc.
+    return (appFrames ~/ 2).clamp(0, 10);
+  }
+
+  /// Reset sequence counter. Called on Hot Restart via AtsGenerated.init().
+  static void resetSequence() => _seq = 0;
 
   // Flow Control (Removed in V2)
   // ─────────────────────────────────────────────────
