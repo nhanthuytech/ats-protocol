@@ -1,15 +1,14 @@
-# .gitignore for ats-protocol root
+# .gitignore for ats-protocol
 
-# Dart/Flutter packages
+# Dart/Flutter
 **/.dart_tool/
 **/build/
 **/pubspec.lock
 
-# ATS runtime logs (never commit — add to user project .gitignore too)
-**/.ats/logs/
-
-# ATS flow_graph.json is intentionally COMMITTED in user projects
-# Do NOT add assets/ats/flow_graph.json here
+# ATS runtime (generated in user projects, not in this repo)
+.ats/
+ats.yaml
+lib/generated/
 
 # IDE
 .idea/
@@ -19,3 +18,6 @@
 # macOS
 .DS_Store
 **/.DS_Store
+
+# Misc
+*.log

@@ -9,7 +9,7 @@
     "ats_version": {
       "type": "string",
       "description": "ATS protocol version. Follows semver.",
-      "example": "1.0.0"
+      "example": "3.0.0"
     },
     "project": {
       "type": "string",

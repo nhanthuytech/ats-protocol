@@ -3,6 +3,7 @@
 > A **structured logging library** + **AI agent skill** for Flutter. ATS gives AI coding agents (Cursor, Claude, Windsurf) a persistent map of your project's business logic, so they can toggle debug logs per flow instead of scattering `print()` everywhere.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/nhanthuytech/ats-protocol/actions/workflows/ci.yml/badge.svg)](https://github.com/nhanthuytech/ats-protocol/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/Platform-Flutter%20%7C%20Dart-blueviolet)](https://flutter.dev)
 [![AI Ready](https://img.shields.io/badge/AI%20Agent-Native-green)](https://cursor.so)
 
@@ -165,20 +166,24 @@ Graph grows richer → Next AI session starts with full context
 ats-protocol/
 ├── spec/                          # Protocol specification (language-agnostic)
 │   ├── flow_graph_schema.json     # JSON Schema for flow_graph.json
-│   └── protocol.md                # Technical specs
+│   └── protocol.md                # Full protocol spec
 │
-├── skills/                        # CORE ASSET: AI Skills
-│   ├── flutter/
-│   │   └── SKILL.md               # Workflow for AI agents in Flutter
-│   └── universal/
-│       └── SKILL.md               # Framework-agnostic workflow
+├── skills/                        # AI Agent Skills
+│   ├── antigravity/
+│   │   └── SKILL.md               # Skill for Antigravity (Gemini) agents
+│   └── claude/
+│       └── CLAUDE.md              # Skill for Claude agents
 │
-└── packages/
-    └── ats_flutter/               # Dart/Flutter SDK Implementation
-        ├── lib/
-        │   ├── src/ats_core.dart  # ATS.trace(), runtime execution
-        │   └── ats_flutter.dart   # Public Export APIs
-        └── pubspec.yaml
+├── packages/
+│   └── ats_flutter/               # Dart/Flutter SDK + CLI
+│       ├── lib/
+│       │   ├── src/ats_core.dart  # ATS.trace(), runtime control
+│       │   └── ats_flutter.dart   # Public API
+│       ├── bin/ats.dart           # CLI entry point
+│       └── pubspec.yaml
+│
+├── docs/                          # Setup & migration guides
+└── .github/workflows/ci.yml      # CI pipeline
 ```
 
 **Getting Started:**
