@@ -1,73 +1,42 @@
-# ATS Flutter — Setup Guide (V4)
+# ATS Protocol — Setup Guide
 
-Hướng dẫn tích hợp ATS V4 vào một Flutter project hiện có.
-
-> **Nâng cấp?** Nếu bạn đang dùng V2 hoặc V3, xem [Hướng dẫn Migration](migration_v2_to_v3.md).
+This guide walks you through setting up ATS in your project, from zero to a fully connected AI-augmented debugging environment.
 
 ---
 
-## 1. Thêm dependency
+## Prerequisites
 
-```yaml
-# pubspec.yaml
-dependencies:
-  ats_flutter:
-    path: /Users/MAC/Documents/Project/ats-protocol/packages/ats_flutter
-    # Sau khi publish pub.dev:
-    # ats_flutter: ^0.1.0
-```
+| Component | Requirement | Check |
+|---|---|---|
+| Flutter SDK | ≥ 3.29.0 | `flutter --version` |
+| Node.js | ≥ 20 (only for MCP Server) | `node --version` |
+| AI IDE | Claude Code, Cursor, VS Code + Continue, or any MCP-compatible editor | — |
+
+---
+
+## Step 1: Install the Flutter SDK
 
 ```bash
-flutter pub get
+# Add ATS to your Flutter project
+flutter pub add ats_flutter
+
+# Initialize ATS — creates flow graph + generated code
+dart run ats_flutter init
 ```
 
-> **Không cần thêm gì vào `flutter.assets`.**
-> File cấu hình ATS **không** được bundle vào APK/IPA.
+This creates:
+```
+your_project/
+├── .ats/
+│   └── flow_graph.json          # Knowledge graph (commit this to git)
+├── lib/generated/ats/
+│   └── ats_generated.g.dart     # Compiled lookup table (commit this too)
+└── ats.yaml                     # Optional path configuration
+```
 
 ---
 
-## 2. Cài đặt ATS CLI (Global)
-
-```bash
-dart pub global activate -s path /Users/MAC/Documents/Project/ats-protocol/packages/ats_flutter
-# Sau khi publish lên pub.dev:
-# dart pub global activate ats_flutter
-```
-
----
-
-## 3. Khởi tạo ATS trong project
-
-```bash
-cd /path/to/your/flutter/project
-ats init
-```
-
-Lệnh này tự động tạo:
-
-| File | Mô tả |
-|---|---|
-| `.ats/flow_graph.json` | Knowledge graph — bộ não của project |
-| `ats.yaml` | Config thư mục (tùy biến được) |
-| `lib/generated/ats/ats_generated.g.dart` | Compiled Dart Map (O(1) lookup) |
-
----
-
-## 3b. Tùy biến đường dẫn (Tùy chọn)
-
-Chỉnh `ats.yaml` (ngang hàng với `pubspec.yaml`):
-
-```yaml
-ats-dir: .ats                             # Nơi chứa flow_graph.json
-output-dir: lib/generated/ats             # Thư mục sinh code
-output-ats-file: ats_generated.g.dart     # Tên file code
-```
-
-Nếu không có `ats.yaml`, ATS dùng giá trị mặc định.
-
----
-
-## 4. Cập nhật `main.dart`
+## Step 2: Initialize in main.dart
 
 ```dart
 import 'package:ats_flutter/ats_flutter.dart';
@@ -75,200 +44,271 @@ import 'generated/ats/ats_generated.g.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  AtsGenerated.init(); // O(1), gọi một lần duy nhất
-  runApp(const MyApp());
+  AtsGenerated.init(); // O(1) — synchronous, no JSON parsing
+  runApp(MyApp());
 }
 ```
 
----
-
-## 5. Install AI Agent System
-
-ATS V4 có 3 tầng: **Rule** (nhẹ, luôn load) + **Workflow** (gọi khi cần) + **MCP Server** (optional).
-
-### Tầng 1+2: Rule + Workflow
-
-```bash
-ats skill install              # Tự detect AI agent, cài rule + workflow
-```
-
-Lệnh này cài:
-- **Claude:** Append ATS rules vào `CLAUDE.md`, copy workflows vào `.agents/workflows/`
-- **Gemini:** Copy skill vào `.gemini/skills/ats-flutter/`, copy workflows
-- **Cursor:** Copy rule file vào `.cursor/rules/`
-
-### Tầng 3: MCP Server (Optional — tiết kiệm 93% tokens)
-
-```bash
-# Chạy MCP server
-dart run /path/to/ats-protocol/packages/ats_mcp_server/bin/server.dart .
-```
-
-Cấu hình trong IDE:
-
-**Claude Code** (`.claude/mcp.json`):
-```json
-{
-  "mcpServers": {
-    "ats": {
-      "command": "dart",
-      "args": ["run", "/path/to/ats_mcp_server/bin/server.dart", "."]
-    }
-  }
-}
-```
-
-**Cursor** (`.cursor/mcp.json`):
-```json
-{
-  "mcpServers": {
-    "ats": {
-      "command": "dart",
-      "args": ["run", "/path/to/ats_mcp_server/bin/server.dart", "."]
-    }
-  }
-}
-```
-
-MCP Server cung cấp 6 tools:
-
-| Tool | Mô tả |
-|---|---|
-| `ats_context` | Trả context flow đã topo-sort (thay thế đọc JSON) |
-| `ats_activate` | Bật logging cho flow (auto sync) |
-| `ats_silence` | Tắt logging cho flow (auto sync) |
-| `ats_validate` | Phát hiện cycles, stale methods, invalid edges |
-| `ats_impact` | Phân tích blast radius khi sửa method |
-| `ats_graph` | Export DAG dạng Mermaid |
+> **Why `AtsGenerated.init()`?** ATS compiles your flow graph into a native Dart `const Map` at build time. At runtime, it's just a map lookup — no file I/O, no parsing, no async. Changes take effect via Hot Restart.
 
 ---
 
-## 6. Chạy App
+## Step 3: Add traces to your code
 
-Kiến trúc CodeGen không yêu cầu config IDE đặc biệt.
-
-1. Nhấn **Run/Play** bình thường (VS Code / Android Studio / Terminal).
-2. Khi AI (hoặc bạn) dùng `ats activate` / `ats silence`, file `ats_generated.g.dart` tự cập nhật.
-3. Nhấn **Hot Restart** (`r` hoặc `F5`) để load config mới.
-
-```bash
-flutter run
-# Hoặc:
-ats run
-```
-
----
-
-## 7. Sử dụng hàng ngày
-
-### Bật/tắt debug flow:
-```bash
-ats activate PAYMENT_FLOW    # Bật log → Hot Restart → xem console
-ats silence PAYMENT_FLOW     # Tắt log → xong, code sạch
-```
-
-### Sửa JSON thủ công → compile:
-```bash
-ats sync
-```
-
-### Xem tất cả flows:
-```bash
-ats flows
-```
-
-### Export DAG diagram:
-```bash
-ats graph                       # In ra terminal
-ats graph --methods             # Bao gồm method-level edges
-ats graph --output dag.md       # Ghi ra file
-```
-
-### Log console output (V4):
-```
-[ATS] Registry initialized via CodeGen.
-[ATS] Active flows: [PAYMENT_FLOW]
-[ATS][PAYMENT_FLOW][#001][d0] PaymentService.processPayment | {amount: 150000, currency: VND}
-[ATS][PAYMENT_FLOW][#002][d1] StripeGateway.charge | {intent: pi_xxx}
-[ATS][PAYMENT_FLOW][#003][d0] CheckoutBloc.onPaymentConfirmed | {txId: tx_12345}
-```
-
-- `[#NNN]` — Thứ tự thực thi (execution sequence)
-- `[dN]` — Độ sâu gọi (d0 = top-level, d1 = được gọi bởi d0)
-
----
-
-## 8. Thêm ATS.trace() vào code
-
-AI agent sẽ tự làm bước này. Nếu muốn thêm thủ công:
+Place `ATS.trace()` at the top of important methods:
 
 ```dart
-class PaymentService {
-  Future<String> processPayment(PaymentRequest req) async {
-    ATS.trace('PaymentService', 'processPayment', data: req.toJson());
-    // ... code cũ
+class CartService {
+  Future<void> checkout(Cart cart) async {
+    ATS.trace('CartService', 'checkout', data: cart.toJson());
+    final payment = await _paymentService.process(cart.total);
+    // ...
   }
 
-  Future<bool> refund(String txId) async {
-    ATS.trace('PaymentService', 'refund', data: {'txId': txId});
-    // ... code cũ
+  Future<void> applyVoucher(String code) async {
+    ATS.trace('CartService', 'applyVoucher', data: {'code': code});
+    final voucher = await _voucherApi.validate(code);
+    // ...
   }
 }
 ```
 
-Sau đó cập nhật `.ats/flow_graph.json` (V4 format):
+Then map to a flow in `.ats/flow_graph.json`:
 
 ```json
 {
-  "ats_version": "4.0.0",
-  "project": "your_app",
-  "updated_at": "2026-04-16T00:00:00Z",
   "flows": {
-    "PAYMENT_FLOW": {
-      "description": "Checkout và payment lifecycle",
+    "CHECKOUT_FLOW": {
+      "description": "Cart to payment completion",
       "active": false,
-      "depends_on": ["AUTH_FLOW"],
       "classes": {
-        "PaymentService": {
-          "methods": ["processPayment", "refund"],
+        "CartService": {
+          "methods": ["checkout", "applyVoucher"],
           "last_verified": "2026-04-16"
         }
       }
     }
-  },
-  "edges": []
+  }
 }
 ```
 
-> **V3 format vẫn hoạt động:** `"PaymentService": ["processPayment", "refund"]` — backward compatible.
+Run sync to update generated code:
+```bash
+dart run ats_flutter sync
+```
+
+> **Tip:** Your AI agent handles all of this automatically when it has the ATS skill loaded. You rarely need to edit `flow_graph.json` by hand.
 
 ---
 
-## 9. .gitignore
+## Step 4: Set up MCP Server (Recommended)
+
+The MCP Server gives AI agents 7 specialized tools, cutting token usage by ~95% compared to raw file reading.
+
+### Build
+
+```bash
+cd packages/ats-mcp-server   # or wherever you cloned ats-protocol
+npm install
+npx tsc
+```
+
+### Connect to your IDE
+
+<details>
+<summary><b>Claude Code</b></summary>
+
+Edit `~/.claude/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "ats": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/ats-protocol/packages/ats-mcp-server/dist/index.js",
+        "/absolute/path/to/your/flutter/project"
+      ]
+    }
+  }
+}
+```
+
+Restart Claude Code. You should see `ats` listed in available MCP tools.
+</details>
+
+<details>
+<summary><b>Cursor</b></summary>
+
+Create `.cursor/mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "ats": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/ats-protocol/packages/ats-mcp-server/dist/index.js",
+        "."
+      ]
+    }
+  }
+}
+```
+
+Restart Cursor. The tools appear automatically.
+</details>
+
+<details>
+<summary><b>VS Code + Continue</b></summary>
+
+Add to your Continue configuration:
+
+```json
+{
+  "mcpServers": {
+    "ats": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/ats-protocol/packages/ats-mcp-server/dist/index.js",
+        "."
+      ]
+    }
+  }
+}
+```
+</details>
+
+### Verify it works
+
+Ask your AI agent:
+```
+"What flows exist in this project?"
+```
+
+The agent should call `ats_context` and respond with your flow list — **not** read `flow_graph.json` directly.
+
+### Available Tools
+
+| Tool | What AI uses it for |
+|---|---|
+| `ats_context` | Understanding a flow — classes, methods, edges, history |
+| `ats_activate` | Turning on logging for a flow |
+| `ats_silence` | Turning off logging after debugging |
+| `ats_validate` | Checking graph integrity — cycles, stale methods |
+| `ats_impact` | Analyzing blast radius before modifying a method |
+| `ats_instrument` | Auto-adding `ATS.trace()` to every method in a file |
+| `ats_analyze` | Parsing console logs to discover call chains |
+
+[Full tool documentation →](../packages/ats-mcp-server/README.md)
+
+---
+
+## Step 5: Install AI Agent Skills (Recommended)
+
+Skills teach AI agents the ATS protocol automatically. Without them, you'd need to explain the workflow every session.
+
+### For Gemini (Antigravity)
+
+```bash
+# In your Flutter project
+mkdir -p .gemini/antigravity/skills/ats-flutter
+cp /path/to/ats-protocol/skills/antigravity/SKILL.md \
+   .gemini/antigravity/skills/ats-flutter/SKILL.md
+```
+
+### For Claude
+
+```bash
+cp /path/to/ats-protocol/skills/claude/CLAUDE.md .claude/CLAUDE.md
+```
+
+### What the skill teaches
+
+1. Read `flow_graph.json` at the start of every task
+2. Add `ATS.trace()` when writing or modifying classes
+3. Map new classes to appropriate flows
+4. Activate flows when debugging, silence when done
+5. Record sessions, edges, and known issues
+
+---
+
+## Step 6: Web Visualization (Optional)
+
+See your entire flow graph as an interactive DAG in the browser:
+
+```bash
+npx tsx /path/to/ats-protocol/packages/ats-mcp-server/src/web/web-server.ts \
+    /path/to/your/flutter/project
+# → http://localhost:4567
+```
+
+Features:
+- **Force-directed graph** — Nodes sized by importance (PageRank)
+- **Flow filtering** — Click a flow to isolate its methods
+- **Edge coloring** — Different colors for `calls`, `delegates`, `emits`, `navigates`
+- **Dark theme** — Easy on the eyes during late-night debugging
+- **Drag + zoom** — Explore large graphs interactively
+
+---
+
+## Step 7: Add to .gitignore
+
+ATS generates some files that should be committed, and some that shouldn't:
 
 ```gitignore
-# ATS logs (không commit)
-.ats/logs/
+# Commit these:
+# .ats/flow_graph.json          ← Knowledge graph
+# lib/generated/ats/            ← Generated code
 
-# .ats/flow_graph.json KHÔNG ignore — đây là knowledge base, PHẢI commit
+# Ignore these:
+.ats/logs/                       # Runtime log files
 ```
 
 ---
 
-## 10. Tóm tắt
+## Workflow Summary
 
-| Bước | Lệnh |
+| You do | AI does |
 |---|---|
-| Cài dependency | `pubspec.yaml` + `flutter pub get` |
-| Cài CLI | `dart pub global activate -s path ...` |
-| Khởi tạo | `ats init` |
-| Thêm vào main | `AtsGenerated.init()` |
-| Cài AI agent | `ats skill install` |
-| MCP Server (optional) | `dart run .../server.dart .` |
-| Chạy app | Nhấn F5 hoặc `ats run` |
-| Bật debug | `ats activate <FLOW>` |
-| Tắt debug | `ats silence <FLOW>` |
-| Export DAG | `ats graph` |
+| Write business logic | Adds `ATS.trace()` to methods, maps them to flows |
+| Report a bug | Activates the flow, reads structured logs, fixes the bug |
+| Hit F5 / restart | Logs appear in console with sequence + depth |
+| Say "done" | Silences the flow, records session notes + discovered edges |
+| `git commit` | Flow graph committed — next session starts with full context |
 
-> **Production:** `AtsGenerated.init()` và `ATS.trace()` là **complete no-op** trong release builds.
-> Zero bytes thêm vào APK, zero runtime overhead.
+---
+
+## Troubleshooting
+
+### No logs appearing after activate
+
+1. Make sure you **Hot Restarted** (not just Hot Reloaded) — `AtsGenerated.init()` uses `const` values that need a restart.
+2. Verify the flow is active: `dart run ats_flutter status`
+3. Check that your class/method names in `flow_graph.json` match the source code exactly.
+
+### MCP tools not showing in IDE
+
+1. Verify the MCP server built successfully: `cd packages/ats-mcp-server && npx tsc`
+2. Check that `dist/index.js` exists
+3. Use **absolute paths** in your MCP configuration
+4. Restart your IDE after changing MCP config
+
+### Generated file errors
+
+```bash
+dart run ats_flutter sync    # Regenerate from flow_graph.json
+```
+
+---
+
+## Related Documentation
+
+| Document | Description |
+|---|---|
+| [Developer + AI Workflow](flow.md) | Day-to-day workflow with detailed examples |
+| [Protocol Specification](../spec/protocol.md) | Schema, contracts, log format |
+| [MCP Server](../packages/ats-mcp-server/README.md) | 7 tools with full input/output examples |
+| [Flutter SDK](../packages/ats_flutter/README.md) | Dart API reference + CLI commands |
+| [Migration V3 → V4](migration_v3_to_v4.md) | Upgrade guide to DAG architecture |
+| [Contributing](../CONTRIBUTING.md) | How to contribute |

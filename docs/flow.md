@@ -1,52 +1,64 @@
 # ATS Protocol — Developer & AI Workflow (V4)
 
-Tài liệu này mô tả chi tiết cách ATS V4 thay đổi quy trình làm việc hàng ngày giữa bạn (Developer) và AI Agent (Claude, Cursor, Gemini).
+This document describes how ATS V4 changes the daily interaction between you (the developer) and your AI agent (Claude, Cursor, Gemini, or any MCP-compatible assistant).
 
 ---
 
-## Vấn đề ATS giải quyết
+## The Problem ATS Solves
 
-**Không có ATS:**
-1. App gặp lỗi.
-2. Bạn bảo AI: *"Fix phần đăng nhập, xem log thử xem bị gì."*
-3. AI mò 20-50 file, viết `print()` rải rác khắp nơi (~30K tokens).
-4. Build lại app, xem log.
-5. Sửa xong → phải dọn print(). AI quên xóa → log rác lọt vào release.
-6. Hôm sau debug tiếp → AI mất context, scan lại từ đầu.
+### Without ATS
 
-**Với ATS V4:**
-1. AI gọi `ats_context("CHECKOUT_FLOW")` → nhận ngay danh sách class + edges (~200 tokens).
-2. `ats activate CHECKOUT_FLOW` → structured log xuất hiện.
-3. AI đọc log có sequence + depth → hiểu call chain tức thì.
-4. Fix xong → `ats silence` → code sạch, không cần dọn.
-5. Knowledge tích luỹ: edges, sessions, known_issues → hôm sau AI nhớ hết.
+1. Your app hits a bug.
+2. You tell AI: *"Fix the checkout — something's wrong with payment."*
+3. AI scans 20–50 files, scatters `print()` statements everywhere (~30K tokens).
+4. You rebuild the app, read the logs together.
+5. Bug fixed → now you need to clean up all those print statements. AI forgets some. Log pollution leaks into production.
+6. Next day, same flow breaks again → AI has **zero memory**. Scans everything from scratch.
+
+**Total cost per debug session: ~30,000 tokens. Context retained: zero.**
+
+### With ATS V4
+
+1. AI calls `ats_context("CHECKOUT_FLOW")` → receives class list, edges, past sessions in **200 tokens**.
+2. `ats_activate("CHECKOUT_FLOW")` → structured logging enabled. One command.
+3. You reproduce the bug. Console shows sequence + depth → AI understands the exact call chain instantly.
+4. Bug fixed → `ats_silence("CHECKOUT_FLOW")` → code stays clean. Nothing to remove.
+5. AI records the session: what went wrong, how it was fixed, what edges were discovered.
+6. Next day → AI reads the graph → **remembers everything**. Often skips logging entirely.
+
+**Total cost per debug session: ~350 tokens. Context retained: permanently.**
 
 ---
 
-## Workflow Chuẩn V4
+## The Standard Workflow
 
-### Bước 1: Instrument — Đặt trace vào code (1 lần duy nhất)
+### Phase 1: Instrument — Add traces once, keep them forever
 
-Khi AI viết class mới hoặc chạm vào class cũ chưa có log:
+When AI writes a new class or touches an existing one without traces:
 
 ```dart
 class CartService {
   Future<void> checkout(Cart cart) async {
     ATS.trace('CartService', 'checkout', data: cart.toJson());
-    // code checkout...
+    final payment = await _paymentService.process(cart.total);
+    final receipt = await _receiptService.generate(payment);
+    return receipt;
   }
 
   Future<void> applyVoucher(String code) async {
     ATS.trace('CartService', 'applyVoucher', data: {'code': code});
-    // code voucher...
+    final voucher = await _voucherApi.validate(code);
+    if (!voucher.valid) throw VoucherException(code);
+    _cart.discount = voucher.discount;
   }
 }
 ```
 
-AI tự map vào `.ats/flow_graph.json` (V4 format):
+AI maps the class to a flow in `.ats/flow_graph.json`:
+
 ```json
 "CHECKOUT_FLOW": {
-  "description": "Giỏ hàng đến thanh toán",
+  "description": "Cart to payment completion",
   "active": false,
   "depends_on": ["PAYMENT_FLOW"],
   "classes": {
@@ -58,150 +70,190 @@ AI tự map vào `.ats/flow_graph.json` (V4 format):
 }
 ```
 
-> **Làm sao AI biết phải làm gì?** Tầng 1 (Rule) load tự động mỗi session — dạy AI 5 quy tắc cốt lõi trong ~500 tokens. Chi tiết hơn thì AI gọi workflow hoặc MCP tool.
+> **How does AI know to do this?** Layer 1 (Rules) loads automatically every session — it teaches AI the 5 core principles in ~500 tokens. For detailed steps, AI invokes a workflow or MCP tool.
+
+**With MCP Server:** AI can call `ats_instrument({ file: "lib/services/cart_service.dart", flow: "CHECKOUT_FLOW" })` to add traces to every public method at once, and update the graph automatically.
 
 ---
 
-### Bước 2: Debug — Kích hoạt flow (khi gặp bug)
+### Phase 2: Debug — Activate when you hit a bug
 
-Bạn phát hiện bug Checkout. Chat với AI: *"Xem giùm tao sao cái Checkout bị lỗi."*
+You discover a checkout bug. You tell AI: *"Checkout is broken — customer can't complete payment."*
 
-**Cách 1 — AI dùng CLI:**
+**Option A — AI uses CLI:**
 ```bash
-ats activate CHECKOUT_FLOW
+dart run ats_flutter activate CHECKOUT_FLOW
 ```
 
-**Cách 2 — AI dùng MCP Tool (nhanh hơn, ít token hơn):**
+**Option B — AI uses MCP (faster, fewer tokens):**
 ```
-AI gọi: ats_context("CHECKOUT_FLOW")
-→ Nhận: classes, edges, sessions, depends_on đã topo-sort
+AI calls: ats_context("CHECKOUT_FLOW")
+  → Receives: classes, edges, sessions, depends_on — topologically sorted
 
-AI gọi: ats_activate("CHECKOUT_FLOW")
-→ Flow bật, auto sync
+AI calls: ats_activate("CHECKOUT_FLOW")
+  → Flow enabled, generated code auto-synced
 ```
 
-AI phản hồi: *"Đã bật log cho CHECKOUT_FLOW. Nhấn r hoặc F5 để Hot Restart."*
+AI responds: *"Logging enabled for CHECKOUT_FLOW. Please Hot Restart (Shift+R) to see logs."*
 
 ---
 
-### Bước 3: Đọc Log và Fix Bug
+### Phase 3: Read Logs and Fix
 
-Bạn nhấn F5, thao tác mua hàng. Console hiện:
+You Hot Restart, reproduce the bug. Console shows:
 
 ```
-[ATS][CHECKOUT_FLOW][#001][d0] CartService.checkout | {"cart_id": "123", "total": 99}
-[ATS][CHECKOUT_FLOW][#002][d1] PaymentGateway.process | {"status": "declined"}
-[ATS][CHECKOUT_FLOW][#003][d1] VoucherService.validate | {"code": "SALE50", "valid": false}
+[ATS][CHECKOUT_FLOW][#001][d0] CheckoutBloc.onCheckoutStarted | {"cart_id": "abc-123"}
+[ATS][CHECKOUT_FLOW][#002][d1] CartService.checkout | {"total": 99.50}
+[ATS][CHECKOUT_FLOW][#003][d2] PaymentService.processPayment | {"status": "declined"}
+[ATS][CHECKOUT_FLOW][#004][d1] VoucherService.validate | {"code": "SALE50", "valid": false}
 ```
 
-**AI đọc pattern:**
-- `#001 d0` → `#002 d1`: CartService.checkout **gọi** PaymentGateway.process
-- `#001 d0` → `#003 d1`: CartService.checkout cũng **gọi** VoucherService.validate
-- Payment bị declined → root cause rõ ràng
+**AI reads the pattern instantly:**
 
-**AI tự thêm edges vừa phát hiện:**
+```
+#001 d0 → #002 d1:  CheckoutBloc called CartService.checkout
+#002 d1 → #003 d2:  CartService called PaymentService → DECLINED
+#001 d0 → #004 d1:  CheckoutBloc also called VoucherService → also FAILED
+
+Root cause: Payment declined. Voucher validation happened independently
+and also failed — but it shouldn't block payment.
+```
+
+**AI discovers 3 new edges from the log:**
+
 ```json
 "edges": [
-  { "from": "CartService.checkout", "to": "PaymentGateway.process", "type": "calls" },
-  { "from": "CartService.checkout", "to": "VoucherService.validate", "type": "calls" }
+  { "from": "CheckoutBloc.onCheckoutStarted", "to": "CartService.checkout", "type": "calls" },
+  { "from": "CartService.checkout", "to": "PaymentService.processPayment", "type": "calls" },
+  { "from": "CheckoutBloc.onCheckoutStarted", "to": "VoucherService.validate", "type": "calls" }
 ]
 ```
 
-→ Lần sau debug lại, AI đã biết call chain mà không cần bật log.
+**With MCP:** AI calls `ats_analyze({ text: "<console output>" })` and edges are added to the graph automatically. No manual JSON editing.
+
+→ **Next debug session, AI already knows the call chain** without activating logs.
 
 ---
 
-### Bước 4: Silence — Dọn dẹp (tự động)
+### Phase 4: Silence — Clean up automatically
 
-Bug sửa xong. AI chạy:
+Bug fixed. AI runs:
+
 ```bash
-ats silence CHECKOUT_FLOW
+dart run ats_flutter silence CHECKOUT_FLOW
 ```
 
-Đồng thời AI cập nhật graph:
+And records what happened:
+
 ```json
 "CHECKOUT_FLOW": {
   "active": false,
-  "last_debugged": "2026-04-16",
-  "known_issues": [
-    "PaymentGateway trả text 'declined' thay vì enum"
-  ],
   "sessions": [
     {
       "date": "2026-04-16",
       "action": "debug",
-      "note": "Fixed: PaymentGateway.process trả text thay vì enum, thêm parse fallback",
+      "note": "Payment failing: gateway returns text 'declined' instead of error code. Added fallback parser.",
       "resolved": true
     }
+  ],
+  "known_issues": [
+    "PaymentGateway returns text status instead of enum — needs migration"
   ]
 }
 ```
 
-`git commit` file JSON → developer khác (hoặc AI) vào sửa luồng này hôm sau sẽ đọc `sessions` và `known_issues` → không lặp lại công việc cũ.
+You `git commit` the JSON → any developer (or AI) debugging this flow tomorrow will:
+- See the **session history** → know what was already tried
+- See **known_issues** → avoid re-investigating solved problems
+- See **edges** → understand the call chain without enabling logs
 
 ---
 
-## V4 so với V3: Workflow khác gì?
+## V4 vs V3: What Changed?
 
-| Bước | V3 | V4 |
+| Aspect | V3 | V4 |
 |---|---|---|
-| Bắt đầu task | AI đọc toàn bộ flow_graph.json (~3000 tokens) | AI scan tên flow trước, đọc chi tiết flow liên quan (~500 tokens) |
-| Tìm class liên quan | AI tìm trong JSON thủ công | `ats_context("FLOW")` trả context đã topo-sort |
-| Debug log | `[ATS][FLOW] Class.method \| data` | `[ATS][FLOW][#SEQ][dDEPTH] Class.method \| data` |
-| Hiểu call chain | AI phải đoán | AI đọc sequence + depth → biết chính xác ai gọi ai |
-| Ghi nhớ | `known_issues` | `known_issues` + `sessions` + `edges` |
-| Lần sau | AI đọc lại graph | AI đọc graph + biết edges → bỏ qua bước bật log |
-| Phát hiện drift | Không có | `needs_verify`, `last_verified`, `ats_validate` |
+| **Starting a task** | AI reads entire flow_graph.json (~3,000 tokens) | AI calls `ats_context` for specific flow (~200 tokens) |
+| **Finding related classes** | AI searches JSON manually | Topological sort delivers dependencies in order |
+| **Log format** | `[ATS][FLOW] Class.method \| data` | `[ATS][FLOW][#SEQ][dDEPTH] Class.method \| data` |
+| **Understanding call chains** | AI guesses from source code | AI reads sequence + depth → exact chain reconstruction |
+| **Knowledge retention** | `known_issues` only | `known_issues` + `sessions` + `edges` + `depends_on` |
+| **Next session** | AI re-reads entire graph | AI reads graph + already knows edges → skips logging |
+| **Drift detection** | None | `needs_verify`, `last_verified`, `ats_validate` |
+| **Graph structure** | Flat list of flows | DAG with typed edges and dependency ordering |
 
 ---
 
-## Cơ chế CodeGen (V3+)
+## CodeGen Mechanism
 
-ATS không bundle JSON vào APK. Thay vào đó:
+ATS does **not** bundle JSON into your application binary. Instead:
 
-1. `ats sync` biên dịch `flow_graph.json` → `ats_generated.g.dart` (một `const Map` thuần Dart).
-2. `AtsGenerated.init()` load map vào memory ở thời điểm khởi tạo.
-3. `ATS.trace()` tra cứu O(1) — nếu method không active → return ngay (no-op).
-4. Hot Restart load lại file `.dart` mới → log thay đổi tức thì.
+```
+flow_graph.json  ──(ats sync)──▶  ats_generated.g.dart  ──(Hot Restart)──▶  Runtime map
+```
 
-**Zero overhead trong production:** `ATS.trace()` check `kReleaseMode` đầu tiên → return ngay trong release build.
+1. `ats sync` compiles JSON → pure Dart `const Map`
+2. `AtsGenerated.init()` loads map into memory — O(1), synchronous
+3. `ATS.trace()` does map lookup:
+   - Active flow → structured log
+   - Inactive flow → **no-op** (returns immediately)
+4. Hot Restart loads updated generated file → changes take effect instantly
+
+**Zero production overhead:** `ATS.trace()` checks `kReleaseMode` as its very first operation.
 
 ---
 
 ## 3-Layer AI System
 
 ```
-┌──────────────────────────────────────────┐
-│  Layer 1: RULE (luôn load, ~500 tokens)  │
-│  5 quy tắc cốt lõi                       │
-│  → AI biết: dùng trace, đọc graph       │
-├──────────────────────────────────────────┤
-│  Layer 2: WORKFLOW (gọi khi cần)         │
-│  /ats-debug    → 8 bước debug flow      │
-│  /ats-instrument → 7 bước instrument    │
-│  /ats-review   → 6 bước fix drift       │
-├──────────────────────────────────────────┤
-│  Layer 3: MCP SERVER (0 AI tokens)       │
-│  ats_context  → context đã topo-sort    │
-│  ats_validate → phát hiện graph lỗi     │
-│  ats_impact   → blast radius analysis   │
-└──────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│  Layer 1: RULES (always loaded, ~500 tokens)     │
+│  5 core principles:                              │
+│  • Read graph • Add trace • Activate • Silence   │
+│  • Record sessions                               │
+├──────────────────────────────────────────────────┤
+│  Layer 2: WORKFLOWS (loaded on demand)           │
+│  /ats-debug     → 8-step debug flow              │
+│  /ats-instrument → 7-step instrumentation guide  │
+│  /ats-review    → 6-step drift checking          │
+├──────────────────────────────────────────────────┤
+│  Layer 3: MCP SERVER (zero AI token cost)        │
+│  ats_context    → topo-sorted context            │
+│  ats_activate   → toggle flow + sync             │
+│  ats_validate   → detect graph corruption        │
+│  ats_impact     → blast radius analysis          │
+│  ats_instrument → auto-add traces to file        │
+│  ats_analyze    → parse logs, discover edges     │
+└──────────────────────────────────────────────────┘
 ```
 
-**Phối hợp:**
-- Mọi session → Layer 1 nhắc AI làm đúng
-- Khi debug → Layer 2 (`/ats-debug`) hoặc Layer 3 (`ats_context` + `ats_activate`)
-- Khi nghi ngờ graph cũ → Layer 2 (`/ats-review`) hoặc Layer 3 (`ats_validate`)
+**How they work together:**
+- **Every session** → Layer 1 ensures AI follows the protocol
+- **Debugging** → Layer 2 (`/ats-debug`) or Layer 3 (`ats_context` + `ats_activate`)
+- **Reviewing graph** → Layer 2 (`/ats-review`) or Layer 3 (`ats_validate`)
+- **New code** → Layer 2 (`/ats-instrument`) or Layer 3 (`ats_instrument`)
 
 ---
 
-## Tổng kết
+## What You Do vs What AI Does
 
-| Bạn làm gì | AI làm gì |
+| You | AI |
 |---|---|
-| Nhấn F5 chạy app | AI thêm `ATS.trace()` mỗi khi viết/sửa code |
-| Báo bug | AI bật flow, đọc log, fix bug, tắt flow |
-| Commit code | Graph (JSON) cũng được commit → knowledge lưu vĩnh viễn |
-| Không làm gì | AI tự thêm edges, session notes, known_issues |
+| Write business logic | Adds `ATS.trace()` when writing or modifying classes |
+| Report a bug | Activates the flow, reads structured logs, identifies root cause |
+| Hit F5 / Hot Restart | Logs appear in console with sequence and depth info |
+| Say "it's fixed" | Silences the flow, records session notes and new edges |
+| `git commit` | Flow graph committed → knowledge persists forever |
+| Do nothing special | AI accumulates edges, sessions, known issues over time |
 
-Code luôn sạch. Log luôn có sẵn. AI ngày càng hiểu project hơn.
+**Your code stays clean. Logs are always available. AI gets smarter with every session.**
+
+---
+
+## Related
+
+- [Setup Guide](setup.md) — Step-by-step installation
+- [Protocol Specification](../spec/protocol.md) — Schema, contracts, log format
+- [MCP Server](../packages/ats-mcp-server/README.md) — 7 tools with examples
+- [Migration V3 → V4](migration_v3_to_v4.md) — Upgrade guide
