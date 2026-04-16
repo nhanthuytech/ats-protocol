@@ -7,7 +7,9 @@ on:
     branches: [main]
 
 jobs:
-  analyze-and-test:
+  # ── Flutter SDK ──
+  flutter:
+    name: Flutter SDK (analyze + test)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -32,3 +34,27 @@ jobs:
 
       - name: Run tests
         run: flutter test
+
+  # ── TypeScript MCP Server ──
+  mcp-server:
+    name: MCP Server (build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/ats-mcp-server
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npx tsc

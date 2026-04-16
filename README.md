@@ -1,202 +1,179 @@
-# 🧠 Agentic Telemetry Standard (ATS)
+# ATS Protocol — Agentic Telemetry Standard
 
-> A **structured logging library** + **AI agent skill** for Flutter. ATS gives AI coding agents (Cursor, Claude, Windsurf) a persistent map of your project's business logic, so they can toggle debug logs per flow instead of scattering `print()` everywhere.
+**ATS** biến project thành một **knowledge graph tự duy trì**, nơi AI agent tự thêm/tắt log, phát hiện call chains, và tích lũy kiến thức qua mỗi session debug — không cần developer can thiệp.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/nhanthuytech/ats-protocol/actions/workflows/ci.yml/badge.svg)](https://github.com/nhanthuytech/ats-protocol/actions/workflows/ci.yml)
-[![Platform](https://img.shields.io/badge/Platform-Flutter%20%7C%20Dart-blueviolet)](https://flutter.dev)
-[![AI Ready](https://img.shields.io/badge/AI%20Agent-Native-green)](https://cursor.so)
 
 ---
 
-## 🎯 What ATS is
+## Vấn đề ATS giải quyết
 
-ATS has two parts:
+❌ **Không có ATS:** AI mò 20-50 file, print() rải rác, 30K tokens, quên xóa log, hôm sau mất context.
 
-1. **A logging library** (`ats_flutter`) — provides `ATS.trace()`, a lightweight tracing function that respects flow-level on/off switches. When a flow is off, the call is a no-op.
-2. **An AI agent skill** (`SKILL.md`) — a set of instructions that teaches AI agents how to read, update, and maintain `flow_graph.json` — the JSON file that maps classes to business flows.
+✅ **Với ATS:** AI gọi `ats_context("PAYMENT_FLOW")` → 200 tokens, bật log có cấu trúc, đọc call chain, fix xong tắt, knowledge lưu vĩnh viễn.
 
-Together, they let your AI agent:
-- Know which classes belong to which business flow.
-- Toggle logs on/off by flow, not by file.
-- Accumulate project knowledge across sessions (the graph is committed to git).
+## Kiến trúc
 
----
+```
+┌──────────────────────────────────────────────────────────────┐
+│  ATS Protocol (spec + docs + templates)                      │
+├──────────────────────────────────────────────────────────────┤
+│  MCP Server (TypeScript)     │  Flutter SDK (Dart)           │
+│  7 tools cho AI agents       │  ATS.trace() + CLI            │
+│  Universal — mọi ngôn ngữ   │  pub.dev: ats_flutter         │
+├──────────────────────────────────────────────────────────────┤
+│  flow_graph.json — DAG-based knowledge graph                 │
+│  flows → classes → methods → edges → sessions                │
+└──────────────────────────────────────────────────────────────┘
+```
 
-## 🔥 The Exact Problem
+## Monorepo Structure
 
-When an AI agent tries to debug an issue in `CheckoutBloc`:
+```
+ats-protocol/
+├── spec/                          # Protocol specification
+│   ├── protocol.md                # Core protocol (language-agnostic)
+│   └── flow_graph_schema.json     # JSON Schema V4
+├── docs/                          # Guides
+│   ├── flow.md                    # Developer + AI workflow
+│   ├── setup.md                   # Setup guide
+│   ├── migration_v2_to_v3.md      # V2→V3
+│   └── migration_v3_to_v4.md      # V3→V4 (DAG)
+├── templates/                     # AI agent templates
+│   ├── rules/                     # Lightweight rules (~500 tokens)
+│   └── workflows/                 # Step-by-step guides
+├── skills/                        # Full AI skill files
+│   ├── antigravity/SKILL.md       # Gemini
+│   └── claude/CLAUDE.md           # Claude
+├── packages/
+│   ├── ats_flutter/               # Dart/Flutter SDK + CLI
+│   └── ats-mcp-server/            # TypeScript MCP Server
+├── .github/workflows/ci.yml       # CI for both packages
+├── CONTRIBUTING.md
+├── LICENSE                        # MIT
+└── README.md
+```
 
-**Without ATS:**
-1. AI scans 50 different files trying to find related classes.
-2. AI randomly injects `print()` everywhere.
-3. Bug fixed → AI (or you) has to manually clean up every injected `print()`.
-4. Next session: AI loses context, starts scanning from scratch.
+## Quick Start
 
-**With ATS:**
-1. AI reads `flow_graph.json` → immediately knows `CheckoutBloc` belongs to the `PAYMENT_FLOW`.
-2. AI updates `PAYMENT_FLOW.active = true` in JSON → related logs are instantly activated.
-3. Bug fixed → AI runs `ats silence` → logs are muted. Code stays clean.
-4. Next session: `flow_graph.json` remains. AI starts the session instantly with deep architectural context.
+### 1. Flutter SDK
 
----
+```bash
+# Thêm dependency
+flutter pub add ats_flutter
 
-## ⚙️ How V3 Works (Native CodeGen)
+# Khởi tạo ATS trong project
+dart run ats_flutter init
 
-ATS V3 uses a **CodeGen** architecture. Instead of parsing JSON at runtime, the CLI compiles `flow_graph.json` into a static Dart Map. This means flow lookups at runtime are O(1) with no JSON overhead.
-
-### 1. `ATS.trace()` — Instrument code just once
-
-AI adds this trace line when it first writes or encounters a class. **It never needs to be added again.**
+# Instrument code (AI hoặc dev thêm ATS.trace() vào methods)
+# Sync flow_graph.json → generated code
+dart run ats_flutter sync
+```
 
 ```dart
-class PaymentService {
-  Future<void> processPayment(PaymentRequest req) async {
-    ATS.trace('PaymentService', 'processPayment', data: req); // ← Added just once
-    // ... business logic
-  }
+import 'package:ats_flutter/ats_flutter.dart';
+import 'generated/ats/ats_generated.g.dart';
 
-  Future<void> refund(String txId) async {
-    ATS.trace('PaymentService', 'refund', data: txId); // ← Added just once
-    // ... business logic
+void main() {
+  AtsGenerated.init();
+  runApp(MyApp());
+}
+
+class PaymentService {
+  Future<void> processPayment(Order order) async {
+    ATS.trace('PaymentService', 'processPayment', data: order.toJson());
+    // ...
   }
 }
 ```
 
-When a flow is not active, `ATS.trace()` functions as a complete **no-op**, preventing any memory allocation or performance overhead.
+### 2. MCP Server
 
----
+```bash
+cd packages/ats-mcp-server
+npm install && npx tsc
+```
 
-### 2. `flow_graph.json` & `ats.yaml` — The Project Brain
-
-The JSON mapping file is tracked at `.ats/flow_graph.json` and customized via `ats.yaml` (similar to Flutter's `l10n.yaml`). It gets **committed to git** and grows as the project scales.
+Cấu hình IDE (Claude Code / Cursor):
 
 ```json
 {
-  "ats_version": "3.0.0",
-  "project": "my_flutter_app",
-  "flows": {
-    "PAYMENT_FLOW": {
-      "description": "Handles all Stripe and App Store transactions",
-      "active": false,
-      "classes": {
-        "PaymentService": ["processPayment", "refund", "validateCard"],
-        "CheckoutBloc": ["onCheckoutStarted", "onPaymentConfirmed"],
-        "TransactionModel": ["fromJson", "toJson"]
-      }
-    },
-    "AUTH_FLOW": {
-      "description": "Login, registration, and token refreshes",
-      "active": false,
-      "classes": {
-        "AuthService": ["login", "logout", "refreshToken"],
-        "UserService": ["getUser", "validateSession"]
-      }
+  "mcpServers": {
+    "ats": {
+      "command": "node",
+      "args": ["/path/to/ats-mcp-server/dist/index.js", "."]
     }
   }
 }
 ```
 
-**A single class can participate in multiple flows:**
-```json
-"classes": {
-  "UserService": {
-    "AUTH_FLOW": ["getUser", "validateSession"],
-    "PROFILE_FLOW": ["updateProfile", "uploadAvatar"]
-  }
-}
+### 3. Web Visualization
+
+```bash
+npx tsx packages/ats-mcp-server/src/web/web-server.ts .
+# → http://localhost:4567
 ```
 
-**Toggling logs = switching the `active` flag. No code needs to be modified.**
+## MCP Tools (7)
 
----
+| Tool | Mô tả | Token tiết kiệm |
+|---|---|---|
+| `ats_context` | Lấy flow context (topo-sorted) | ~2800/lần |
+| `ats_activate` | Bật flow logging | ~1450/lần |
+| `ats_silence` | Tắt flow logging | ~1450/lần |
+| `ats_validate` | Check cycles, stale methods, invalid edges | — |
+| `ats_impact` | Blast radius trước khi sửa method | — |
+| `ats_instrument` | Thêm trace skeleton vào file (Dart/TS/Python) | ~1600/file |
+| `ats_analyze` | Parse log → auto-add edges vào graph | ~1900/lần |
 
-### 3. `SKILL.md` — Instructions for the AI Agent
-
-This instruction file defines the **standardized workflow** that the AI agent must follow. This is the cornerstone of ATS — it transforms a reactive AI into an organized, architectural agent.
-
----
-
-## 🔄 AI Agent Working Loop
+## V4 Log Format
 
 ```
-Task Started (Fix Bug / Build Feature)
-          │
-          ▼
-Reads .ats/flow_graph.json
-→ Identifies which flow the target class belongs to
-→ If the class is unmapped → Maps it to the relevant flow
-          │
-          ▼
-If debugging is required: sets flow.active = true
-          │
-          ▼
-Codes / Debugs / Tests
-          │
-          ▼
-If class is missing ATS.trace():
-  → Injects ATS.trace() into each method  ← done once, never revisited
-          │
-          ▼
-Task Finished: AI runs `ats silence` (Mutes the flow, compiles Native)
-Code remains clean. No cleanup required.
-          │
-          ▼
-Graph grows richer → Next AI session starts with full context
+[ATS][PAYMENT_FLOW][#001][d0] CheckoutBloc.onCheckout | {"cart_id": "123"}
+[ATS][PAYMENT_FLOW][#002][d1] PaymentService.process | {"amount": 99}
+[ATS][PAYMENT_FLOW][#003][d2] StripeGateway.charge | {"status": "ok"}
 ```
 
-> **A Note on Debugging:** When the AI toggles the `active: true/false` flag, simply trigger a **Hot Restart** (press `r` or `F5`) in your IDE. The new logging configuration takes effect instantly without a full project rebuild!
+- `#SEQ` — thứ tự thực thi (AI đọc flow)
+- `dDEPTH` — độ sâu call stack (AI suy ra ai gọi ai)
 
----
+## 3-Layer AI System
 
-## 📈 Value Over Time
+| Layer | Khi nào load | Token |
+|---|---|---|
+| **Rule** | Mọi session | ~500 |
+| **Workflow** (`/ats-debug`, `/ats-instrument`, `/ats-review`) | Khi cần | ~800 |
+| **MCP Server** (7 tools) | Khi gọi | 0 |
 
-| Timeline | What the AI knows about your project |
-|---|---|
-| Day 1 | `flow_graph.json` is empty, AI scans files manually |
-| Week 1 | 3–5 flows mapped, AI skips scanning for known areas |
-| Month 1 | 10+ flows, AI understands core business logic |
-| Month 3 | Comprehensive graph, AI rarely needs to explore blindly |
+## Graph Algorithms (core/dag.ts)
 
----
+- **Kahn's algorithm** — Cycle detection
+- **Topological sort** — Dependency ordering
+- **PageRank** — Method importance ranking
+- **Betweenness Centrality** — Bottleneck detection
+- **Community Detection** — Auto-suggest flow groupings
+- **BFS Shortest Path** — Call chain between two methods
 
-## 🏗 Repository Structure
+## Supported Languages
 
-```text
-ats-protocol/
-├── spec/                          # Protocol specification (language-agnostic)
-│   ├── flow_graph_schema.json     # JSON Schema for flow_graph.json
-│   └── protocol.md                # Full protocol spec
-│
-├── skills/                        # AI Agent Skills
-│   ├── antigravity/
-│   │   └── SKILL.md               # Skill for Antigravity (Gemini) agents
-│   └── claude/
-│       └── CLAUDE.md              # Skill for Claude agents
-│
-├── packages/
-│   └── ats_flutter/               # Dart/Flutter SDK + CLI
-│       ├── lib/
-│       │   ├── src/ats_core.dart  # ATS.trace(), runtime control
-│       │   └── ats_flutter.dart   # Public API
-│       ├── bin/ats.dart           # CLI entry point
-│       └── pubspec.yaml
-│
-├── docs/                          # Setup & migration guides
-└── .github/workflows/ci.yml      # CI pipeline
-```
+| Language | SDK | Status |
+|---|---|---|
+| Dart/Flutter | `ats_flutter` | ✅ Released |
+| TypeScript/Node.js | `ats-node` | 🔜 Planned |
+| Python | `ats-python` | 🔜 Planned |
+| Swift | `ats-swift` | 🔜 Planned |
 
-**Getting Started:**
-1. Add `ats_flutter` to your `pubspec.yaml`.
-2. Run `ats init` → generates `.ats/flow_graph.json`, `ats.yaml`, and `lib/generated/ats/ats_generated.g.dart`.
-3. Call `AtsGenerated.init()` in your `main()` before `runApp()`.
-4. Run `ats skill install --global` → your AI Agent is ready to work with ATS.
+MCP Server đã hỗ trợ instrument cho cả Dart, TypeScript, và Python.
 
----
+## Documentation
 
-## 🌐 Roadmap
+- [Setup Guide](docs/setup.md)
+- [Developer + AI Workflow](docs/flow.md)
+- [Migration V3→V4](docs/migration_v3_to_v4.md)
+- [Protocol Spec](spec/protocol.md)
+- [MCP Server](packages/ats-mcp-server/README.md)
+- [Contributing](CONTRIBUTING.md)
 
-- **v1.x** — Flutter SDK + `flow_graph.json` core schemas.
-- **v2.x** — SKILL.md setup for Cursor / Claude + V2 Architecture.
-- **v3.0** — **CURRENT:** O(1) CodeGen, `ats.yaml` configuration, Hot Restart support. CLI expansions: `ats init`, `ats sync`, `ats activate`, `ats silence`.
-- **v4.0** — Node.js SDK + Python SDK + Universal MCP Server integrations.
+## License
+
+MIT

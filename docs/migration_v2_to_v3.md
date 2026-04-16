@@ -1,57 +1,55 @@
-# Hướng dẫn Nâng cấp ATS Protocol (V2 lên V3 CodeGen)
+# Hướng dẫn Nâng cấp ATS Protocol — V2 lên V3 (CodeGen)
 
-Phiên bản V3 của ATS sử dụng kiến trúc **Tự sinh mã (CodeGen - O(1))**, giúp lập trình viên không cần thiết lập bất kỳ cấu hình rườm rà nào trên IDE như `--dart-define` ở bản cũ.
+Phiên bản V3 sử dụng kiến trúc **CodeGen O(1)**, không cần `--dart-define` hay config IDE.
 
-Nếu Project Flutter của bạn được tích hợp từ thời còn xài V2, hãy làm đúng 4 bước cực nhanh sau đây để dọn dẹp đồ cổ và tận hưởng môi trường 0-Config của V3:
+> **Đang dùng V3 muốn lên V4?** Xem [migration_v3_to_v4.md](migration_v3_to_v4.md).
 
 ---
 
-## Bước 1: Quét sạch tàn tích config cũ của V2
+## Bước 1: Dọn sạch config cũ V2
 
-Trước đây để chạy ATS, bạn từng phải cài `preLaunchTask` và `args` vào file hệ thống. Việc đầu tiên là đi dọn những thứ dư thừa này:
-
-1. **Xóa file `tasks.json`:** Xoá tệp `.vscode/tasks.json` (nếu có đoạn script `ats_sync`).
-2. **Dọn sạch `launch.json`:** Mở `.vscode/launch.json` và vứt bỏ những dòng sau ra khỏi config chạy app:
+1. **Xóa `.vscode/tasks.json`:** (nếu có đoạn script `ats_sync`).
+2. **Dọn `launch.json`:**
    - Xoá `"preLaunchTask": "ats_sync"`
-   - Xoá `"--dart-define-from-file=.ats/dart_defines.json"` ra khỏi danh sách `args`. (Xoá luôn mảng `args` nếu nó trống).
-3. **Android Studio:** Vào **Run/Debug Configurations** -> Tìm trường **Additional run args** -> Xoá bỏ sạch đoạn chữ `--dart-define` ở đó.
-4. Xoá file rác `dart_defines.json` nằm trong thư mục `.ats/` của bạn (V3 đéo cần gọi nó nữa).
+   - Xoá `"--dart-define-from-file=.ats/dart_defines.json"` ra khỏi `args`.
+3. **Android Studio:** Vào **Run/Debug Configurations** → xoá `--dart-define` khỏi additional args.
+4. **Xoá file:** `.ats/dart_defines.json` (V3 không dùng nữa).
 
-## Bước 2: Sinh lại File Cấu Hình V3 (ats.yaml)
+## Bước 2: Sinh lại config V3
 
-Tại thư mục gốc của project, hít một hơi rồi gõ lệnh:
 ```bash
 ats init
 ```
 
-Lệnh này sẽ rà soát lại project của bạn và tự động văng ra một tệp `ats.yaml` ngang hàng với `pubspec.yaml` cùng với việc tạo tệp Compile mới nhất là `lib/generated/ats/ats_generated.g.dart`.
+Tự tạo `ats.yaml` + `lib/generated/ats/ats_generated.g.dart`.
 
-## Bước 3: Cập nhật hàm gọi `main.dart`
+## Bước 3: Sửa `main.dart`
 
-**Mở file `lib/main.dart` lên và sửa như sau:**
-
-❌ **CODE V2 CŨ:**
+❌ **V2 cũ:**
 ```dart
-import 'package:ats_flutter/ats_flutter.dart';
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await ATS.init(); // <- XOÁ DÒNG NÀY (Hàm bị cảnh báo Deprecated)
+  await ATS.init(); // ← XOÁ
   runApp(MyApp());
 }
 ```
 
-✅ **CODE V3 MỚI:**
+✅ **V3 mới:**
 ```dart
 import 'package:ats_flutter/ats_flutter.dart';
-import 'generated/ats/ats_generated.g.dart'; // <- IMPORT FILE MỚI NÀY
+import 'generated/ats/ats_generated.g.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  AtsGenerated.init(); // <- GỌI HÀM NÀY, TỐC ĐỘ O(1) NGUYÊN BẢN
+  AtsGenerated.init(); // ← O(1), không cần await
   runApp(MyApp());
 }
 ```
 
-## Bước 4: Tận hưởng đặc quyền Hot Restart V3
-Xong! Từ nay mỗi khi bạn muốn quan sát log sau lưng (thay đổi giá trị qua lệnh `ats activate FLOW_NAME`). Kịch bản cũ bạn phải tắt hẳn app và F5 chạy lại từ đầu khá cực hình. Ở bản V3 này: Dù bạn xài IDE, Device Thật, iOS hay Android, cứ bấm phím **r** ở Terminal hoặc bấm nút **Hot Restart** trên góc IDE. Chớp mắt 1 nhịp là luồng log của bạn sẽ tự bật! Lập trình vui vẻ!
+## Bước 4: Hot Restart
+
+Nhấn `r` (terminal) hoặc `F5` (IDE). Xong!
+
+---
+
+> **Tiếp theo:** Nếu muốn nâng lên V4 (DAG + MCP Server), xem [migration_v3_to_v4.md](migration_v3_to_v4.md).

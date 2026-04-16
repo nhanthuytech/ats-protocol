@@ -1,23 +1,32 @@
-# .gitignore for ats-protocol
+# .gitignore for ats-protocol monorepo
 
-# Dart/Flutter
+# ── Dart/Flutter ──
 **/.dart_tool/
 **/build/
 **/pubspec.lock
 
-# ATS runtime (generated in user projects, not in this repo)
+# ── Node.js/TypeScript ──
+**/node_modules/
+**/dist/
+**/*.tsbuildinfo
+**/package-lock.json
+
+# ── ATS runtime (generated in user projects) ──
 .ats/
 ats.yaml
 lib/generated/
 
-# IDE
+# ── IDE ──
 .idea/
 .vscode/
 *.iml
+*.code-workspace
 
-# macOS
+# ── OS ──
 .DS_Store
 **/.DS_Store
+Thumbs.db
 
-# Misc
+# ── Misc ──
 *.log
+*.tmp
