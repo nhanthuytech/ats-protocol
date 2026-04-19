@@ -23,6 +23,7 @@ interface AnalysisResult {
     unique_flows: number;
     time_range: { start: string; end: string } | null;
   };
+  next_action: string;
 }
 
 /**
@@ -226,6 +227,13 @@ function analyzeEntries(entries: LogEntry[], graph: FlowGraph): AnalysisResult {
   const uniqueFlows = new Set(entries.map(e => e.flow));
   const timestamps = entries.map(e => e.timestamp).filter(t => t);
 
+  const highSeverity = anomalies.filter(a => a.severity === 'high');
+  const nextAction = discoveredEdges.length > 0
+    ? `${discoveredEdges.length} new edge(s) auto-added to graph. Review call_chains to identify root cause. Fix the bug, then call ats_silence() for the relevant flow and add a session note.`
+    : highSeverity.length > 0
+      ? `No new edges found but high-severity anomalies detected: ${highSeverity.map(a => a.method).join(', ')}. Investigate these methods. Then call ats_silence() and add a session note.`
+      : `Analysis complete. Review hotspots and call_chains for insights. If done, call ats_silence() for the active flow and add a session note.`;
+
   return {
     hotspots,
     call_chains: callChains,
@@ -240,5 +248,6 @@ function analyzeEntries(entries: LogEntry[], graph: FlowGraph): AnalysisResult {
         ? { start: timestamps[0], end: timestamps[timestamps.length - 1] }
         : null,
     },
+    next_action: nextAction,
   };
 }

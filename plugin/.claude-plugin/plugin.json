@@ -1,0 +1,52 @@
+{
+  "name": "ats-protocol",
+  "version": "5.0.0",
+  "description": "Agentic Telemetry Standard — Turn AI agents into knowledge-accumulating partners with persistent flow graphs, structured tracing, and zero-config debugging.",
+  "author": "nhanthuytech",
+  "repository": "https://github.com/nhanthuytech/ats-protocol",
+  "license": "MIT",
+  "keywords": ["telemetry", "debugging", "flow-graph", "dag", "ai-agent", "mcp"],
+
+  "skills": {
+    "ats": {
+      "path": "skills/ats/SKILL.md",
+      "description": "ATS Protocol — AI-driven flow-based telemetry and debugging",
+      "activation": {
+        "fileExists": ".ats/flow_graph.json"
+      }
+    }
+  },
+
+  "mcpServers": {
+    "ats": {
+      "command": "node",
+      "args": ["mcp-servers/ats/dist/index.js", "."],
+      "description": "8 tools for flow graph management: init, context, activate, silence, validate, impact, instrument, analyze",
+      "autoStart": true,
+      "activation": {
+        "fileExists": ".ats/flow_graph.json"
+      }
+    }
+  },
+
+  "hooks": {
+    "SessionStart": [
+      {
+        "name": "ats-detect",
+        "script": "hooks/session-start/detect.sh",
+        "description": "Auto-detect ATS projects and log discovery results",
+        "condition": {
+          "fileExists": ".ats/flow_graph.json"
+        }
+      }
+    ],
+    "PostToolUse": [
+      {
+        "name": "ats-verify-sync",
+        "script": "hooks/post-tool-use/verify-sync.sh",
+        "toolNames": ["ats_activate", "ats_silence", "ats_instrument"],
+        "description": "Verify generated code is in sync after flow state changes"
+      }
+    ]
+  }
+}

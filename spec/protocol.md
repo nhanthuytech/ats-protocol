@@ -1,4 +1,4 @@
-# ATS Protocol Specification
+# ATS Protocol Specification — V5
 
 ## Overview
 
@@ -10,8 +10,8 @@ The **Agentic Telemetry Standard (ATS)** is an open protocol that turns AI codin
 |---|---|---|
 | **Flow Graph** | DAG-based knowledge graph mapping business logic to code | `.ats/flow_graph.json` |
 | **Runtime SDK** | `ATS.trace()` — near-zero-cost tracing embedded in source | Language-specific packages |
-| **Agent Skill** | Instruction file teaching AI agents the protocol | `SKILL.md` / `CLAUDE.md` |
-| **MCP Server** | 7 tools for zero-token graph management | `packages/ats-mcp-server` |
+| **MCP Server** | 8 tools — `ats_init` is the V5 skill entry point | `packages/ats-mcp-server` |
+| **Agent Hook** | Minimal 4-line rule: "call ats_init first" | `SKILL.md` / `CLAUDE.md` |
 
 ---
 
@@ -27,17 +27,46 @@ The **Agentic Telemetry Standard (ATS)** is an open protocol that turns AI codin
 
 5. **IDE-agnostic** — No `launch.json`, `tasks.json`, or IDE-specific configuration. ATS works with any editor, any AI agent, any CI pipeline.
 
+6. **MCP-as-Skill (V5)** — Protocol intelligence lives in the MCP Server (`ats_init`), not in text files. The agent hook is 4 lines. The tool delivers everything else on-demand, adaptively.
+
 ---
 
-## Flow Graph Schema (V4)
+## V5 Architecture: 2-Layer AI System
+
+```
+Layer 1 — Agent Hook (4 lines in CLAUDE.md / SKILL.md)
+  "If .ats exists, call ats_init before any task."
+  Token cost: ~30 tokens/session
+
+Layer 2 — Smart MCP Server (8 tools)
+  ats_init  → returns protocol instructions + graph overview + next_action
+  ats_*     → each returns data + next_action hint
+  Token cost: ~400 tokens on first call, ~0 for subsequent tool calls
+```
+
+**vs V4 3-Layer (deprecated):**
+
+| | V4 | V5 |
+|---|---|---|
+| CLAUDE.md/session | ~1,200 tokens | ~30 tokens |
+| Workflow files | 3 manual slash commands | Deleted |
+| Intelligence lives in | Text files (per project) | MCP Server (1 place) |
+| Update ATS rules | Modify N projects | Modify 1 MCP server |
+| Workflow trigger | Manual `/ats-debug` | Auto via `next_action` |
+
+---
+
+## Flow Graph Schema (V5)
 
 The flow graph is a JSON file located at `.ats/flow_graph.json` (configurable via `ats.yaml`).
+
+> **Note:** The flow_graph.json schema is unchanged from V4. V5 is a protocol-layer change only — existing graphs are fully compatible.
 
 ### Top-Level Fields
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `ats_version` | string | ✅ | Protocol version (semver, e.g. `"4.0.0"`) |
+| `ats_version` | string | ✅ | Protocol version (semver, e.g. `"5.0.0"`) |
 | `project` | string | ✅ | Project name |
 | `updated_at` | string | ✅ | ISO 8601 timestamp of last modification |
 | `flows` | object | ✅ | Map of flow name → flow definition |
@@ -51,15 +80,17 @@ The flow graph is a JSON file located at `.ats/flow_graph.json` (configurable vi
 | `active` | boolean | ✅ | Whether trace logs are enabled |
 | `classes` | object | ✅ | Map of class name → class definition |
 | `depends_on` | string[] | — | Upstream flow dependencies |
+| `parent` | string | — | Parent flow for sub-flow hierarchy |
 | `tags` | string[] | — | Categorization labels |
 | `known_issues` | string[] | — | AI-maintained list of known bugs |
-| `sessions` | Session[] | — | Debug session history |
+| `sessions` | Session[] | — | Debug session history (max 5) |
 
-### Class Definition (V4)
+### Class Definition
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `methods` | string[] | ✅ | List of instrumented method names |
+| `muted` | string[] | — | Subset of methods to suppress from logging |
 | `last_verified` | string | — | ISO date when methods were last confirmed in source |
 | `needs_verify` | boolean | — | Flag for drift detection |
 
@@ -70,21 +101,14 @@ The flow graph is a JSON file located at `.ats/flow_graph.json` (configurable vi
 | `from` | string | `Class.method` that initiates the call |
 | `to` | string | `Class.method` that receives the call |
 | `type` | string | Relationship type: `calls`, `delegates`, `emits`, or `navigates` |
-
-### Session Definition
-
-| Field | Type | Description |
-|---|---|---|
-| `date` | string | ISO 8601 date |
-| `action` | string | `debug`, `refactor`, or `review` |
-| `note` | string | What was done and what was found |
-| `resolved` | boolean | Whether the issue was resolved |
+| `condition` | string | Optional condition when this edge is taken |
 
 ### Naming Conventions
 
 | Entity | Convention | Example |
 |---|---|---|
-| Flow names | `SCREAMING_SNAKE_CASE` | `PAYMENT_FLOW` |
+| Flow names | `SCREAMING_SNAKE_CASE` + suffix | `PAYMENT_FLOW`, `APP_STARTUP_LIFECYCLE` |
+| Flow suffix | `_FLOW`, `_LIFECYCLE`, `_WORKER` | See above |
 | Class names | Exact source match | `PaymentService` |
 | Method names | Exact source match | `processPayment` |
 
@@ -92,9 +116,9 @@ The flow graph is a JSON file located at `.ats/flow_graph.json` (configurable vi
 
 ```json
 {
-  "ats_version": "4.0.0",
+  "ats_version": "5.0.0",
   "project": "my_app",
-  "updated_at": "2026-04-16T00:00:00Z",
+  "updated_at": "2026-04-17T00:00:00Z",
   "flows": {
     "CHECKOUT_FLOW": {
       "description": "Cart to payment completion",
@@ -103,17 +127,18 @@ The flow graph is a JSON file located at `.ats/flow_graph.json` (configurable vi
       "classes": {
         "CartService": {
           "methods": ["checkout", "applyVoucher"],
-          "last_verified": "2026-04-16"
+          "muted": ["applyVoucher"],
+          "last_verified": "2026-04-17"
         },
         "CheckoutBloc": {
           "methods": ["onCheckoutStarted", "onPaymentConfirmed"],
-          "last_verified": "2026-04-16"
+          "last_verified": "2026-04-17"
         }
       },
       "known_issues": ["Voucher validation race condition on slow networks"],
       "sessions": [
         {
-          "date": "2026-04-16",
+          "date": "2026-04-17",
           "action": "debug",
           "note": "Fixed race condition by debouncing voucher API calls",
           "resolved": true
@@ -126,7 +151,7 @@ The flow graph is a JSON file located at `.ats/flow_graph.json` (configurable vi
       "classes": {
         "PaymentService": {
           "methods": ["processPayment", "refund"],
-          "last_verified": "2026-04-16"
+          "last_verified": "2026-04-17"
         }
       }
     }
@@ -140,7 +165,7 @@ The flow graph is a JSON file located at `.ats/flow_graph.json` (configurable vi
 
 ---
 
-## V4 Log Format
+## V4 Log Format (unchanged)
 
 ```
 [ATS][FLOW_NAME][#SEQ][dDEPTH] Class.method | {optional_data}
@@ -154,18 +179,11 @@ The flow graph is a JSON file located at `.ats/flow_graph.json` (configurable vi
 | `Class.method` | Source code location |
 | `{data}` | Optional structured data (JSON) |
 
-**Key insight:** Sequence + Depth together allow AI to reconstruct the entire call chain without source-level tracing:
-
-```
-[ATS][CHECKOUT_FLOW][#001][d0] CheckoutBloc.onCheckoutStarted
-[ATS][CHECKOUT_FLOW][#002][d1] CartService.checkout         ← called by #001 (depth 0→1)
-[ATS][CHECKOUT_FLOW][#003][d2] PaymentService.processPayment ← called by #002 (depth 1→2)
-[ATS][CHECKOUT_FLOW][#004][d1] ReceiptService.generate       ← called by #001 (depth back to 1)
-```
+**Key insight:** Sequence + Depth together allow AI to reconstruct the entire call chain without source-level tracing.
 
 ---
 
-## Runtime SDK Contract
+## Runtime SDK Contract (unchanged)
 
 Any ATS SDK implementation **must** provide:
 
@@ -173,16 +191,17 @@ Any ATS SDK implementation **must** provide:
 
 1. **Release mode check** — If running in release/production, return immediately. Zero overhead.
 2. **Flow lookup** — O(1) lookup: does `Class.method` belong to an active flow?
-3. **If active** — Print structured log line in V4 format.
-4. **If inactive** — No-op. Return immediately.
+3. **Mute check** — O(1) set check: is this method muted?
+4. **If active and not muted** — Print structured log line in V4 format.
+5. **If inactive or muted** — No-op. Return immediately.
 
-### `internalInit(methodMap, activeFlows)`
+### `internalInit(methodMap, activeFlows, mutedMethods)`
 
-Accepts a pre-compiled map of `"Class.method" → [flowNames]` and a set of active flow names. Called once at app startup from generated code.
+Accepts pre-compiled maps from generated code. Called once at app startup.
 
 ---
 
-## CodeGen Architecture (V3+)
+## CodeGen Architecture (unchanged from V3+)
 
 ATS does not bundle JSON into the application binary. Instead:
 
@@ -191,56 +210,47 @@ ATS does not bundle JSON into the application binary. Instead:
 3. `ATS.trace()` performs O(1) map lookup — if method not active → return immediately.
 4. Hot Restart reloads the generated `.dart` file → log changes take effect instantly.
 
-```dart
-// AUTO-GENERATED BY ATS CLI — DO NOT EDIT
-import 'package:ats_flutter/ats_flutter.dart';
+---
 
-const _kMethodMap = <String, List<String>>{
-  'PaymentService.processPayment': ['PAYMENT_FLOW'],
-  'PaymentService.refund': ['PAYMENT_FLOW'],
-};
+## MCP Tools (8)
 
-const _kActiveFlows = <String>['PAYMENT_FLOW'];
-
-abstract class AtsGenerated {
-  static void init() {
-    ATS.internalInit(_kMethodMap, _kActiveFlows);
-  }
-}
-```
+| Tool | What it does | V5 Role |
+|---|---|---|
+| **`ats_init`** | Returns protocol instructions + graph overview + next_action | **V5 Skill Entry Point** — call first |
+| **`ats_context`** | Returns flow context — classes, methods, edges, sessions | Returns `next_action` hint |
+| **`ats_activate`** | Activates flow logging + auto-syncs generated code | Returns `next_action` hint |
+| **`ats_silence`** | Deactivates flow logging + auto-syncs | Returns `next_action` hint |
+| **`ats_validate`** | Detects cycles, stale methods, invalid edges, orphan classes | — |
+| **`ats_impact`** | Blast radius analysis: callers, callees, affected flows, risk level | — |
+| **`ats_instrument`** | Adds `ATS.trace()` skeleton to every public method in a file | — |
+| **`ats_analyze`** | Parses console logs → discovers call chains → auto-adds edges | Returns `next_action` hint |
 
 ---
 
-## Agent Skill Contract
+## Agent Skill Contract (V5)
 
-An ATS skill file (`SKILL.md` / `CLAUDE.md`) must instruct the AI agent to:
+An ATS skill file must instruct the AI agent to:
 
-1. **Read** `flow_graph.json` at the start of every task (or call `ats_context`).
-2. **Map** new classes to the appropriate flow when writing or modifying code.
-3. **Activate** flows when debugging (via `ats activate <FLOW>` or `ats_activate` MCP tool).
-4. **Silence** flows when done (via `ats silence <FLOW>` or `ats_silence` MCP tool).
-5. **Instrument** classes with `ATS.trace()` on first encounter.
-6. **Never remove** `ATS.trace()` calls — they are permanent instrumentation.
-7. **Record** sessions, discovered edges, and known issues after each debug session.
-8. **Update** the `updated_at` timestamp when modifying the graph.
+1. **Call `ats_init`** at the start of every task (via MCP tool).
+2. **Follow instructions** returned by `ats_init` exactly.
+3. **Never use `print()`** or remove `ATS.trace()` calls.
+4. **Never leave a flow active** after finishing.
+
+The skill file itself should be **minimal** (~30 tokens). All protocol details are delivered by `ats_init`.
 
 ---
 
-## Configuration (`ats.yaml`)
-
-Optional YAML file at project root controlling paths:
+## Configuration (`ats.yaml`) (unchanged)
 
 ```yaml
-ats-dir: .ats                           # Where flow_graph.json lives
-output-dir: lib/generated/ats           # Where generated code is placed
-output-ats-file: ats_generated.g.dart   # Generated file name
+ats-dir: .ats
+output-dir: lib/generated/ats
+output-ats-file: ats_generated.g.dart
 ```
-
-Defaults are used if absent.
 
 ---
 
-## CLI Commands
+## CLI Commands (unchanged)
 
 | Command | Description |
 |---|---|
@@ -258,4 +268,4 @@ Defaults are used if absent.
 - Protocol version follows **semver**.
 - SDK versions are independent but declare which protocol version they support.
 - The `ats_version` field in `flow_graph.json` indicates the protocol version.
-- Migration guides: [V2→V3](../docs/migration_v2_to_v3.md)  |  [V3→V4](../docs/migration_v3_to_v4.md)
+- **V4 → V5 migration:** No schema changes. Update CLAUDE.md/SKILL.md to minimal hook. The MCP server's `ats_init` tool provides all instructions.

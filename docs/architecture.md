@@ -20,20 +20,25 @@ This document explains the internal architecture and design decisions of ATS. Re
 
 ## System Overview
 
-ATS has four layers, each with a specific responsibility:
+ATS has two layers in V5, each with a specific responsibility:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        AI Agent (Claude, Gemini, Cursor)            │
-│                        Reads rules · calls tools · edits code       │
-├──────────────────────────┬──────────────────────────────────────────┤
-│  MCP Server (TypeScript) │  Language SDK (Dart, TS, Python...)     │
-│  7 tools over JSON-RPC   │  trace() + CLI + codegen               │
-│  Reads/writes graph      │  Reads generated maps at runtime       │
-├──────────────────────────┴──────────────────────────────────────────┤
-│                    flow_graph.json (V4)                             │
-│                    DAG knowledge graph                              │
-│                    flows · classes · methods · edges · sessions     │
+│  AI Agent Hook (CLAUDE.md / SKILL.md)  —  ~30 tokens/session         │
+│  "If .ats exists, call ats_init before any task"                       │
+├─────────────────────────────────────────────────────────────────────┤
+│  MCP Server (TypeScript)  —  8 tools                                  │
+│  ┌──────────────────────┐    ┌─────────────────────────────────┐   │
+│  │ ats_init (V5 Skill)    │    │ Language SDK (Dart, TS, Python...)  │   │
+│  │ protocol + next_action │    │ trace() + CLI + codegen             │   │
+│  │ 7 workflow tools       │    │ Reads generated maps at runtime     │   │
+│  └────────────┬─────────┘    └────────────────┬─────────────┘   │
+│             └───────────────┬─────────────────┘                    │
+│                           │                                           │
+│             ┌─────────┬───▼───────────┐                           │
+│             │  flow_graph.json (V5)        │                           │
+│             │  DAG: flows, edges, sessions │                           │
+│             └─────────────────────────────┘                           │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -65,6 +70,7 @@ flow_graph.json
 │   │   ├── classes
 │   │   │   ├── CartService
 │   │   │   │   ├── methods: ["checkout", "applyVoucher"]
+│   │   │   │   ├── muted: ["applyVoucher"]  ← suppressed but still in graph
 │   │   │   │   └── last_verified: "2026-04-16"
 │   │   │   └── CheckoutBloc
 │   │   │       └── methods: ["onCheckoutStarted"]
@@ -110,18 +116,18 @@ ATS.trace('PaymentService', 'processPayment', data: order.toJson())
   ┌─ kReleaseMode? ──▶ YES → return (zero cost)
   │
   NO ▼
-  ┌─ Lookup "PaymentService.processPayment" in _kMethodMap
+  ┌─ Is "PaymentService.processPayment" in _kMutedMethods set?
   │   │
-  │   ├─ NOT FOUND → return (O(1) miss, negligible cost)
+  │   ├─ YES → return (O(1) skip, no string formatting)
   │   │
-  │   └─ FOUND → returns ["PAYMENT_FLOW"]
-  │         │
-  │         ▼
-  │      ┌─ Is "PAYMENT_FLOW" in _kActiveFlows?
+  │   └─ NO ▼
+  │      ┌─ Lookup "PaymentService.processPayment" in _kMethodMap
   │      │   │
-  │      │   ├─ NO → return (no-op)
+  │      │   ├─ NOT FOUND → return (O(1) miss, negligible cost)
   │      │   │
-  │      │   └─ YES ▼
+  │      │   └─ FOUND → returns ["PAYMENT_FLOW"]
+  │      │         │
+  │      │         ▼
   │      │      Increment global sequence counter
   │      │      Compute depth from stack trace
   │      │      Print: [ATS][PAYMENT_FLOW][#007][d2] PaymentService.processPayment | {...}
@@ -133,6 +139,7 @@ ATS.trace('PaymentService', 'processPayment', data: order.toJson())
 | Scenario | Cost |
 |---|---|
 | Release build | **0** — returns before any logic |
+| Method is muted | **O(1)** — single set check, no string formatting |
 | Method not in any flow | **O(1)** — single map lookup |
 | Method in inactive flow | **O(1)** — map lookup + set check |
 | Method in active flow | **O(1)** lookup + string formatting + print |
@@ -169,11 +176,15 @@ const _kMethodMap = <String, List<String>>{
   'CartService.applyVoucher': ['CHECKOUT_FLOW'],
 };
 
+const _kMutedMethods = <String>{
+  'CartService.applyVoucher',  // suppressed — trace stays in code
+};
+
 const _kActiveFlows = <String>['CHECKOUT_FLOW'];
 
 abstract class AtsGenerated {
   static void init() {
-    ATS.internalInit(_kMethodMap, _kActiveFlows);
+    ATS.internalInit(_kMethodMap, _kActiveFlows, _kMutedMethods);
   }
 }
 ```
@@ -192,25 +203,50 @@ The server speaks [Model Context Protocol (MCP)](https://modelcontextprotocol.io
 
 ```
 src/
-├── index.ts                 # Server entry — registers 7 tools
+├── index.ts                 # Server entry — registers 8 tools
 ├── core/
 │   ├── flow-graph.ts        # FlowGraph class — reads/writes flow_graph.json
-│   │                        # Provides: read(), write(), flows, projectRoot
 │   └── dag.ts               # DAG class — 6 graph algorithms
-│                            # Provides: topoSort, pageRank, centrality,
-│                            #           shortestPath, communities, hasCycles
 ├── tools/
-│   ├── context.ts           # Topo-sorted flow context delivery
-│   ├── activate.ts          # Toggle active + exec "dart run ats_flutter sync"
+│   ├── init.ts              # V5 SKILL ENTRY POINT — ats_init
+│   │                        # Returns: protocol instructions + graph overview + next_action
+│   ├── context.ts           # Topo-sorted flow context delivery + next_action
+│   ├── activate.ts          # Toggle active + exec "dart run ats_flutter sync" + next_action
 │   ├── validate.ts          # Integrity: cycles, stale methods, invalid edges
 │   ├── impact.ts            # BFS traversal for callers/callees from a method
 │   ├── instrument.ts        # Regex AST parser for Dart/TS/Python
-│   ├── analyze.ts           # Log parser: sequence+depth → edge discovery
+│   ├── analyze.ts           # Log parser: sequence+depth → edge discovery + next_action
 │   ├── graph.ts             # Mermaid diagram generator (used by web)
 │   └── rank.ts              # PageRank + centrality wrapper (used by web)
 └── web/
-    └── web-server.ts        # Express-like HTTP server + D3.js frontend
+    └── web-server.ts        # Interactive dashboard + REST API
 ```
+
+### V5 MCP-as-Skill Pattern
+
+In V5, the MCP Server IS the skill. The key insight: instead of AI agents reading large SKILL.md files (~1,200 tokens loaded every session), they call `ats_init` once per task (~400 tokens, on-demand).
+
+**How it works:**
+
+```
+AI starts task
+    ↓
+calls ats_init()                ← 30 token hook triggers this
+    ↓
+Receives: protocol instructions + graph overview + suggested_next
+    ↓
+calls ats_context('FLOW_NAME') ← knows which flow from graph_overview
+    ↓
+Receives: full context + next_action: "call ats_activate if debugging"
+    ↓
+calls ats_activate('FLOW_NAME') ← no manual workflow lookup needed
+    ↓
+Receives: confirmation + next_action: "tell user Hot Restart, then ats_analyze"
+    ↓
+... and so on — each tool guides to the next step
+```
+
+Workflow intelligence flows through `next_action` fields — not text files.
 
 ### Tool Design Principles
 

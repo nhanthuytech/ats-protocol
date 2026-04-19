@@ -103,7 +103,7 @@ dart run ats_flutter sync
 
 ## Step 4: Set up MCP Server (Recommended)
 
-The MCP Server gives AI agents 7 specialized tools, cutting token usage by ~95% compared to raw file reading.
+The MCP Server gives AI agents 8 specialized tools. With V5, `ats_init` delivers full protocol instructions on-demand — no heavy config files needed.
 
 ### Build
 
@@ -118,23 +118,14 @@ npx tsc
 <details>
 <summary><b>Claude Code</b></summary>
 
-Edit `~/.claude/mcp.json`:
+Use the Claude Code CLI to add the server:
 
-```json
-{
-  "mcpServers": {
-    "ats": {
-      "command": "node",
-      "args": [
-        "/absolute/path/to/ats-protocol/packages/ats-mcp-server/dist/index.js",
-        "/absolute/path/to/your/flutter/project"
-      ]
-    }
-  }
-}
+```bash
+# Run from your Flutter project root
+claude mcp add ats -- node /absolute/path/to/ats-protocol/packages/ats-mcp-server/dist/index.js
 ```
 
-Restart Claude Code. You should see `ats` listed in available MCP tools.
+This auto-writes the config for the current project. Restart Claude Code — you should see `ats` listed in available MCP tools.
 </details>
 
 <details>
@@ -183,15 +174,16 @@ Add to your Continue configuration:
 
 Ask your AI agent:
 ```
-"What flows exist in this project?"
+"Call ats_init and tell me what flows exist in this project."
 ```
 
-The agent should call `ats_context` and respond with your flow list — **not** read `flow_graph.json` directly.
+The agent should call `ats_init` and receive full protocol instructions + graph overview in one call.
 
-### Available Tools
+### Available Tools (8)
 
 | Tool | What AI uses it for |
 |---|---|
+| `ats_init` | **Call first** — gets protocol instructions + graph overview |
 | `ats_context` | Understanding a flow — classes, methods, edges, history |
 | `ats_activate` | Turning on logging for a flow |
 | `ats_silence` | Turning off logging after debugging |
@@ -204,32 +196,33 @@ The agent should call `ats_context` and respond with your flow list — **not** 
 
 ---
 
-## Step 5: Install AI Agent Skills (Recommended)
+## Step 5: Install AI Agent Hook (Recommended)
 
-Skills teach AI agents the ATS protocol automatically. Without them, you'd need to explain the workflow every session.
+Add a minimal 4-line hook so AI agents automatically know to call `ats_init` at task start.
+With V5, you do **not** need to install workflow files or copy large skill files.
+
+### For Claude Code
+
+```bash
+# In your Flutter project root
+mkdir -p .claude
+cat > .claude/CLAUDE.md << 'EOF'
+# ATS Protocol V5
+If `.ats/flow_graph.json` exists in this project:
+1. Call `ats_init` before starting any task.
+2. Follow all instructions returned by the tool exactly.
+3. Never use print() or debugPrint() — they are forbidden.
+4. Never remove ATS.trace() calls from code.
+EOF
+```
 
 ### For Gemini (Antigravity)
 
 ```bash
-# In your Flutter project
 mkdir -p .gemini/antigravity/skills/ats-flutter
 cp /path/to/ats-protocol/skills/antigravity/SKILL.md \
    .gemini/antigravity/skills/ats-flutter/SKILL.md
 ```
-
-### For Claude
-
-```bash
-cp /path/to/ats-protocol/skills/claude/CLAUDE.md .claude/CLAUDE.md
-```
-
-### What the skill teaches
-
-1. Read `flow_graph.json` at the start of every task
-2. Add `ATS.trace()` when writing or modifying classes
-3. Map new classes to appropriate flows
-4. Activate flows when debugging, silence when done
-5. Record sessions, edges, and known issues
 
 ---
 

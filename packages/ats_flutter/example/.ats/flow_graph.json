@@ -1,6 +1,830 @@
 {
-  "ats_version": "1.0.0",
-  "project": "ats_flutter_example",
-  "updated_at": "2026-04-15T17:25:59.456475",
-  "flows": {}
+  "ats_version": "4.0.0",
+  "project": "shopify_clone",
+  "updated_at": "2026-04-16T08:46:39.433Z",
+  "flows": {
+    "AUTH_FLOW": {
+      "description": "User authentication and session management",
+      "active": false,
+      "classes": {
+        "AuthBloc": {
+          "methods": [
+            "onLoginRequested",
+            "onLogoutRequested",
+            "onTokenRefresh",
+            "onBiometricAuth"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "AuthService": {
+          "methods": [
+            "login",
+            "logout",
+            "refreshToken",
+            "validateSession"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "TokenStorage": {
+          "methods": [
+            "saveTokens",
+            "getAccessToken",
+            "getRefreshToken",
+            "clearTokens"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "BiometricService": {
+          "methods": [
+            "authenticate",
+            "isAvailable",
+            "enroll"
+          ],
+          "last_verified": "2026-04-15"
+        }
+      },
+      "known_issues": [
+        "Token refresh race condition when multiple API calls fail simultaneously"
+      ],
+      "sessions": [
+        {
+          "date": "2026-04-15",
+          "action": "debug",
+          "note": "Fixed: Concurrent 401s triggered multiple token refreshes. Added mutex lock.",
+          "resolved": true
+        }
+      ]
+    },
+    "PRODUCT_FLOW": {
+      "description": "Product catalog browsing and search",
+      "active": false,
+      "depends_on": [
+        "AUTH_FLOW"
+      ],
+      "classes": {
+        "ProductBloc": {
+          "methods": [
+            "onLoadProducts",
+            "onSearchQuery",
+            "onFilterChanged",
+            "onSortChanged",
+            "onLoadMore"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "ProductRepository": {
+          "methods": [
+            "getProducts",
+            "searchProducts",
+            "getProductById",
+            "getCategories"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "ProductApi": {
+          "methods": [
+            "fetchProducts",
+            "fetchSearch",
+            "fetchProduct",
+            "fetchCategories"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "ProductCache": {
+          "methods": [
+            "getCached",
+            "setCached",
+            "invalidate",
+            "warmUp"
+          ],
+          "last_verified": "2026-04-14"
+        },
+        "SearchService": {
+          "methods": [
+            "search",
+            "getSuggestions",
+            "trackQuery",
+            "clearHistory"
+          ],
+          "last_verified": "2026-04-16"
+        }
+      },
+      "sessions": [
+        {
+          "date": "2026-04-14",
+          "action": "debug",
+          "note": "Pagination breaking when filter changes mid-scroll. Reset page index on filter change.",
+          "resolved": true
+        }
+      ]
+    },
+    "CART_FLOW": {
+      "description": "Shopping cart management",
+      "active": true,
+      "depends_on": [
+        "PRODUCT_FLOW",
+        "AUTH_FLOW"
+      ],
+      "classes": {
+        "CartBloc": {
+          "methods": [
+            "onAddItem",
+            "onRemoveItem",
+            "onUpdateQuantity",
+            "onClearCart",
+            "onApplyVoucher"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "CartRepository": {
+          "methods": [
+            "getCart",
+            "addToCart",
+            "removeFromCart",
+            "updateQuantity",
+            "syncWithServer"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "CartService": {
+          "methods": [
+            "calculateTotal",
+            "validateCart",
+            "mergeGuestCart",
+            "getShippingEstimate"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "VoucherService": {
+          "methods": [
+            "validateVoucher",
+            "applyVoucher",
+            "removeVoucher",
+            "getAvailableVouchers"
+          ],
+          "last_verified": "2026-04-15"
+        }
+      },
+      "known_issues": [
+        "Guest cart merge loses voucher on login",
+        "Shipping estimate stale after address change"
+      ],
+      "sessions": [
+        {
+          "date": "2026-04-16",
+          "action": "debug",
+          "note": "Investigating: cart total recalculation not triggered after voucher removal",
+          "resolved": false
+        }
+      ]
+    },
+    "CHECKOUT_FLOW": {
+      "description": "Checkout process from cart to order confirmation",
+      "active": true,
+      "depends_on": [
+        "CART_FLOW",
+        "PAYMENT_FLOW",
+        "SHIPPING_FLOW"
+      ],
+      "classes": {
+        "CheckoutBloc": {
+          "methods": [
+            "onCheckoutStarted",
+            "onAddressSelected",
+            "onShippingSelected",
+            "onPaymentConfirmed",
+            "onOrderPlaced"
+          ],
+          "last_verified": "2026-04-16",
+          "muted": [
+            "onShippingSelected"
+          ]
+        },
+        "CheckoutService": {
+          "methods": [
+            "createOrder",
+            "validateCheckout",
+            "calculateFinalPrice",
+            "reserveInventory"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "OrderRepository": {
+          "methods": [
+            "createOrder",
+            "getOrder",
+            "getOrderHistory",
+            "cancelOrder"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "InventoryService": {
+          "methods": [
+            "checkAvailability",
+            "reserveItems",
+            "releaseReservation"
+          ],
+          "last_verified": "2026-04-15"
+        }
+      },
+      "sessions": [
+        {
+          "date": "2026-04-15",
+          "action": "debug",
+          "note": "Race condition: inventory reserved but payment failed, reservation not released. Added rollback.",
+          "resolved": true
+        },
+        {
+          "date": "2026-04-16",
+          "action": "debug",
+          "note": "Checkout button stays disabled after address validation error clears",
+          "resolved": false
+        }
+      ]
+    },
+    "PAYMENT_FLOW": {
+      "description": "Payment processing with multiple gateways",
+      "active": true,
+      "depends_on": [
+        "AUTH_FLOW"
+      ],
+      "classes": {
+        "PaymentBloc": {
+          "methods": [
+            "onPaymentMethodSelected",
+            "onPaymentSubmitted",
+            "onPaymentResult"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "PaymentService": {
+          "methods": [
+            "processPayment",
+            "refund",
+            "getPaymentMethods",
+            "validateCard"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "StripeGateway": {
+          "methods": [
+            "charge",
+            "createIntent",
+            "confirmPayment",
+            "handleWebhook"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "MoMoGateway": {
+          "methods": [
+            "createPayment",
+            "verifyPayment",
+            "handleCallback"
+          ],
+          "last_verified": "2026-04-14"
+        },
+        "ReceiptService": {
+          "methods": [
+            "generateReceipt",
+            "sendEmail",
+            "generatePdf"
+          ],
+          "last_verified": "2026-04-16"
+        }
+      },
+      "known_issues": [
+        "MoMo callback sometimes arrives before redirect completes",
+        "Stripe webhook retry causes duplicate receipt emails"
+      ]
+    },
+    "SHIPPING_FLOW": {
+      "description": "Shipping address management and delivery estimation",
+      "active": false,
+      "depends_on": [
+        "AUTH_FLOW"
+      ],
+      "classes": {
+        "ShippingBloc": {
+          "methods": [
+            "onLoadAddresses",
+            "onAddAddress",
+            "onSelectAddress",
+            "onEstimateDelivery"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "AddressRepository": {
+          "methods": [
+            "getAddresses",
+            "saveAddress",
+            "deleteAddress",
+            "setDefault"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "ShippingCalculator": {
+          "methods": [
+            "estimateDelivery",
+            "calculateShippingFee",
+            "getAvailableCarriers"
+          ],
+          "last_verified": "2026-04-15"
+        },
+        "GeocodingService": {
+          "methods": [
+            "geocode",
+            "reverseGeocode",
+            "validateAddress"
+          ],
+          "last_verified": "2026-04-14"
+        }
+      }
+    },
+    "NOTIFICATION_FLOW": {
+      "description": "Push notifications and in-app messaging",
+      "active": false,
+      "depends_on": [
+        "AUTH_FLOW"
+      ],
+      "classes": {
+        "NotificationBloc": {
+          "methods": [
+            "onNotificationReceived",
+            "onMarkRead",
+            "onLoadHistory",
+            "onClearAll"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "NotificationService": {
+          "methods": [
+            "registerDevice",
+            "unregisterDevice",
+            "getHistory",
+            "markAsRead"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "FirebaseMessaging": {
+          "methods": [
+            "initialize",
+            "handleForeground",
+            "handleBackground",
+            "getToken"
+          ],
+          "last_verified": "2026-04-15"
+        },
+        "DeepLinkHandler": {
+          "methods": [
+            "parseLink",
+            "navigateToTarget",
+            "handleDeferredLink"
+          ],
+          "last_verified": "2026-04-14"
+        }
+      }
+    },
+    "ANALYTICS_FLOW": {
+      "description": "User behavior tracking and event logging",
+      "active": false,
+      "depends_on": [
+        "AUTH_FLOW",
+        "PRODUCT_FLOW",
+        "CART_FLOW"
+      ],
+      "classes": {
+        "AnalyticsService": {
+          "methods": [
+            "trackEvent",
+            "trackScreen",
+            "setUserProperties",
+            "flush"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "MixpanelAdapter": {
+          "methods": [
+            "track",
+            "identify",
+            "setProfile",
+            "reset"
+          ],
+          "last_verified": "2026-04-15"
+        },
+        "FirebaseAnalyticsAdapter": {
+          "methods": [
+            "logEvent",
+            "setCurrentScreen",
+            "setUserId"
+          ],
+          "last_verified": "2026-04-15"
+        }
+      }
+    },
+    "PROFILE_FLOW": {
+      "description": "User profile and settings management",
+      "active": false,
+      "depends_on": [
+        "AUTH_FLOW"
+      ],
+      "classes": {
+        "ProfileBloc": {
+          "methods": [
+            "onLoadProfile",
+            "onUpdateProfile",
+            "onUploadAvatar",
+            "onDeleteAccount"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "ProfileRepository": {
+          "methods": [
+            "getProfile",
+            "updateProfile",
+            "uploadAvatar",
+            "deleteAccount"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "ImageService": {
+          "methods": [
+            "pickImage",
+            "cropImage",
+            "compressImage",
+            "uploadToStorage"
+          ],
+          "last_verified": "2026-04-15"
+        }
+      }
+    },
+    "REVIEW_FLOW": {
+      "description": "Product reviews and ratings",
+      "active": false,
+      "depends_on": [
+        "PRODUCT_FLOW",
+        "AUTH_FLOW"
+      ],
+      "classes": {
+        "ReviewBloc": {
+          "methods": [
+            "onLoadReviews",
+            "onSubmitReview",
+            "onDeleteReview",
+            "onReportReview"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "ReviewRepository": {
+          "methods": [
+            "getReviews",
+            "submitReview",
+            "deleteReview",
+            "reportReview",
+            "getAverageRating"
+          ],
+          "last_verified": "2026-04-16"
+        },
+        "MediaUploader": {
+          "methods": [
+            "uploadImages",
+            "uploadVideo",
+            "compressMedia"
+          ],
+          "last_verified": "2026-04-14"
+        }
+      }
+    }
+  },
+  "edges": [
+    {
+      "from": "AuthBloc.onLoginRequested",
+      "to": "AuthService.login",
+      "type": "calls"
+    },
+    {
+      "from": "AuthBloc.onLogoutRequested",
+      "to": "AuthService.logout",
+      "type": "calls"
+    },
+    {
+      "from": "AuthBloc.onTokenRefresh",
+      "to": "AuthService.refreshToken",
+      "type": "calls"
+    },
+    {
+      "from": "AuthBloc.onBiometricAuth",
+      "to": "BiometricService.authenticate",
+      "type": "calls"
+    },
+    {
+      "from": "AuthService.login",
+      "to": "TokenStorage.saveTokens",
+      "type": "calls"
+    },
+    {
+      "from": "AuthService.logout",
+      "to": "TokenStorage.clearTokens",
+      "type": "calls"
+    },
+    {
+      "from": "AuthService.refreshToken",
+      "to": "TokenStorage.getRefreshToken",
+      "type": "calls"
+    },
+    {
+      "from": "AuthService.refreshToken",
+      "to": "TokenStorage.saveTokens",
+      "type": "calls"
+    },
+    {
+      "from": "ProductBloc.onLoadProducts",
+      "to": "ProductRepository.getProducts",
+      "type": "calls"
+    },
+    {
+      "from": "ProductBloc.onSearchQuery",
+      "to": "SearchService.search",
+      "type": "calls"
+    },
+    {
+      "from": "ProductBloc.onSearchQuery",
+      "to": "SearchService.trackQuery",
+      "type": "calls"
+    },
+    {
+      "from": "ProductRepository.getProducts",
+      "to": "ProductCache.getCached",
+      "type": "calls"
+    },
+    {
+      "from": "ProductRepository.getProducts",
+      "to": "ProductApi.fetchProducts",
+      "type": "calls"
+    },
+    {
+      "from": "ProductRepository.getProducts",
+      "to": "ProductCache.setCached",
+      "type": "calls"
+    },
+    {
+      "from": "ProductRepository.searchProducts",
+      "to": "ProductApi.fetchSearch",
+      "type": "calls"
+    },
+    {
+      "from": "SearchService.search",
+      "to": "ProductRepository.searchProducts",
+      "type": "delegates"
+    },
+    {
+      "from": "CartBloc.onAddItem",
+      "to": "CartRepository.addToCart",
+      "type": "calls"
+    },
+    {
+      "from": "CartBloc.onAddItem",
+      "to": "CartService.calculateTotal",
+      "type": "calls"
+    },
+    {
+      "from": "CartBloc.onRemoveItem",
+      "to": "CartRepository.removeFromCart",
+      "type": "calls"
+    },
+    {
+      "from": "CartBloc.onUpdateQuantity",
+      "to": "CartRepository.updateQuantity",
+      "type": "calls"
+    },
+    {
+      "from": "CartBloc.onApplyVoucher",
+      "to": "VoucherService.validateVoucher",
+      "type": "calls"
+    },
+    {
+      "from": "CartBloc.onApplyVoucher",
+      "to": "VoucherService.applyVoucher",
+      "type": "calls"
+    },
+    {
+      "from": "CartBloc.onApplyVoucher",
+      "to": "CartService.calculateTotal",
+      "type": "calls"
+    },
+    {
+      "from": "CartService.mergeGuestCart",
+      "to": "CartRepository.syncWithServer",
+      "type": "calls"
+    },
+    {
+      "from": "CartService.getShippingEstimate",
+      "to": "ShippingCalculator.calculateShippingFee",
+      "type": "calls"
+    },
+    {
+      "from": "CartRepository.addToCart",
+      "to": "AnalyticsService.trackEvent",
+      "type": "emits"
+    },
+    {
+      "from": "CheckoutBloc.onCheckoutStarted",
+      "to": "CartService.validateCart",
+      "type": "calls"
+    },
+    {
+      "from": "CheckoutBloc.onCheckoutStarted",
+      "to": "InventoryService.checkAvailability",
+      "type": "calls"
+    },
+    {
+      "from": "CheckoutBloc.onAddressSelected",
+      "to": "ShippingCalculator.estimateDelivery",
+      "type": "calls"
+    },
+    {
+      "from": "CheckoutBloc.onShippingSelected",
+      "to": "CheckoutService.calculateFinalPrice",
+      "type": "calls"
+    },
+    {
+      "from": "CheckoutBloc.onPaymentConfirmed",
+      "to": "PaymentService.processPayment",
+      "type": "calls"
+    },
+    {
+      "from": "CheckoutBloc.onOrderPlaced",
+      "to": "CheckoutService.createOrder",
+      "type": "calls"
+    },
+    {
+      "from": "CheckoutBloc.onOrderPlaced",
+      "to": "InventoryService.reserveItems",
+      "type": "calls"
+    },
+    {
+      "from": "CheckoutService.createOrder",
+      "to": "OrderRepository.createOrder",
+      "type": "calls"
+    },
+    {
+      "from": "CheckoutService.createOrder",
+      "to": "NotificationService.registerDevice",
+      "type": "emits"
+    },
+    {
+      "from": "CheckoutService.createOrder",
+      "to": "AnalyticsService.trackEvent",
+      "type": "emits"
+    },
+    {
+      "from": "PaymentBloc.onPaymentSubmitted",
+      "to": "PaymentService.processPayment",
+      "type": "calls"
+    },
+    {
+      "from": "PaymentService.processPayment",
+      "to": "StripeGateway.createIntent",
+      "type": "calls"
+    },
+    {
+      "from": "PaymentService.processPayment",
+      "to": "StripeGateway.confirmPayment",
+      "type": "calls"
+    },
+    {
+      "from": "PaymentService.processPayment",
+      "to": "MoMoGateway.createPayment",
+      "type": "calls"
+    },
+    {
+      "from": "PaymentService.processPayment",
+      "to": "ReceiptService.generateReceipt",
+      "type": "calls"
+    },
+    {
+      "from": "PaymentService.refund",
+      "to": "StripeGateway.charge",
+      "type": "calls"
+    },
+    {
+      "from": "ReceiptService.generateReceipt",
+      "to": "ReceiptService.sendEmail",
+      "type": "calls"
+    },
+    {
+      "from": "ReceiptService.generateReceipt",
+      "to": "ReceiptService.generatePdf",
+      "type": "calls"
+    },
+    {
+      "from": "ShippingBloc.onLoadAddresses",
+      "to": "AddressRepository.getAddresses",
+      "type": "calls"
+    },
+    {
+      "from": "ShippingBloc.onAddAddress",
+      "to": "GeocodingService.validateAddress",
+      "type": "calls"
+    },
+    {
+      "from": "ShippingBloc.onAddAddress",
+      "to": "AddressRepository.saveAddress",
+      "type": "calls"
+    },
+    {
+      "from": "ShippingBloc.onEstimateDelivery",
+      "to": "ShippingCalculator.estimateDelivery",
+      "type": "calls"
+    },
+    {
+      "from": "ShippingCalculator.calculateShippingFee",
+      "to": "GeocodingService.geocode",
+      "type": "calls"
+    },
+    {
+      "from": "NotificationBloc.onNotificationReceived",
+      "to": "DeepLinkHandler.parseLink",
+      "type": "calls"
+    },
+    {
+      "from": "DeepLinkHandler.parseLink",
+      "to": "DeepLinkHandler.navigateToTarget",
+      "type": "calls"
+    },
+    {
+      "from": "DeepLinkHandler.navigateToTarget",
+      "to": "ProductRepository.getProductById",
+      "type": "navigates"
+    },
+    {
+      "from": "DeepLinkHandler.navigateToTarget",
+      "to": "OrderRepository.getOrder",
+      "type": "navigates"
+    },
+    {
+      "from": "FirebaseMessaging.handleForeground",
+      "to": "NotificationBloc.onNotificationReceived",
+      "type": "emits"
+    },
+    {
+      "from": "ProfileBloc.onUploadAvatar",
+      "to": "ImageService.pickImage",
+      "type": "calls"
+    },
+    {
+      "from": "ProfileBloc.onUploadAvatar",
+      "to": "ImageService.compressImage",
+      "type": "calls"
+    },
+    {
+      "from": "ProfileBloc.onUploadAvatar",
+      "to": "ImageService.uploadToStorage",
+      "type": "calls"
+    },
+    {
+      "from": "ProfileBloc.onUpdateProfile",
+      "to": "ProfileRepository.updateProfile",
+      "type": "calls"
+    },
+    {
+      "from": "ProfileBloc.onDeleteAccount",
+      "to": "AuthService.logout",
+      "type": "calls"
+    },
+    {
+      "from": "ReviewBloc.onSubmitReview",
+      "to": "MediaUploader.uploadImages",
+      "type": "calls"
+    },
+    {
+      "from": "ReviewBloc.onSubmitReview",
+      "to": "ReviewRepository.submitReview",
+      "type": "calls"
+    },
+    {
+      "from": "ReviewBloc.onSubmitReview",
+      "to": "AnalyticsService.trackEvent",
+      "type": "emits"
+    },
+    {
+      "from": "ReviewBloc.onLoadReviews",
+      "to": "ReviewRepository.getReviews",
+      "type": "calls"
+    },
+    {
+      "from": "AuthService.login",
+      "to": "AnalyticsService.trackEvent",
+      "type": "emits"
+    },
+    {
+      "from": "AuthService.login",
+      "to": "CartService.mergeGuestCart",
+      "type": "calls"
+    },
+    {
+      "from": "AuthService.login",
+      "to": "NotificationService.registerDevice",
+      "type": "calls"
+    }
+  ]
 }

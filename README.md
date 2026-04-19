@@ -35,14 +35,14 @@ Tomorrow → starts from scratch         Sessions + edges → instant recall
 │                                                                │
 │  ┌──────────────────────┐      ┌───────────────────────────┐  │
 │  │  MCP Server (TS)     │      │  Flutter SDK (Dart)       │  │
-│  │  7 tools for AI      │      │  ATS.trace() + CLI        │  │
-│  │  Universal — any lang│      │  pub.dev: ats_flutter      │  │
+│  │  8 tools for AI      │      │  ATS.trace() + CLI        │  │
+│  │  ats_init = V5 skill │      │  pub.dev: ats_flutter      │  │
 │  └──────────┬───────────┘      └─────────────┬─────────────┘  │
 │             │                                │                │
 │             └────────────┬───────────────────┘                │
 │                          │                                    │
 │              ┌───────────▼────────────┐                       │
-│              │  flow_graph.json (V4)  │                       │
+│              │  flow_graph.json (V5)  │                       │
 │              │  DAG knowledge graph   │                       │
 │              │  flows · edges ·       │                       │
 │              │  sessions · issues     │                       │
@@ -60,10 +60,10 @@ ats-protocol/
 │   ├── protocol.md                # Core protocol — schema, contracts, log format
 │   └── flow_graph_schema.json     # JSON Schema for validation
 ├── docs/
+│   ├── architecture.md           # Internal architecture deep dive
 │   ├── flow.md                    # Developer + AI workflow guide
 │   ├── setup.md                   # Step-by-step setup
-│   ├── migration_v2_to_v3.md      # V2 → V3
-│   └── migration_v3_to_v4.md      # V3 → V4 (DAG architecture)
+│   └── sdk-guide.md               # How to build ATS SDKs for new languages
 ├── templates/
 │   ├── rules/                     # Lightweight AI rules (~500 tokens)
 │   └── workflows/                 # Step-by-step guides (/debug, /instrument, /review)
@@ -166,13 +166,14 @@ Connect to your IDE — [setup guide →](docs/setup.md)
 
 | Tool | What it does | Tokens saved |
 |---|---|---|
+| **`ats_init`** | **V5 Skill Entry Point** — protocol instructions + graph overview + next_action on first call | ~1,200/session |
 | **`ats_context`** | Returns flow context — classes, methods, edges, sessions — topologically sorted | ~2,800/call |
-| **`ats_activate`** | Activates flow logging + auto-syncs generated code | ~1,450/call |
-| **`ats_silence`** | Deactivates flow logging + auto-syncs | ~1,450/call |
+| **`ats_activate`** | Activates flow logging + auto-syncs generated code + next_action hint | ~1,450/call |
+| **`ats_silence`** | Deactivates flow logging + auto-syncs + next_action hint | ~1,450/call |
 | **`ats_validate`** | Detects cycles, stale methods, invalid edges, orphan classes | — |
 | **`ats_impact`** | Blast radius analysis: callers, callees, affected flows, risk level | — |
 | **`ats_instrument`** | Adds `ATS.trace()` skeleton to every public method in a file (Dart/TS/Python) | ~1,600/file |
-| **`ats_analyze`** | Parses console logs → discovers call chains → auto-adds edges to graph | ~1,900/call |
+| **`ats_analyze`** | Parses console logs → discovers call chains → auto-adds edges + next_action hint | ~1,900/call |
 
 [Full tool documentation →](packages/ats-mcp-server/README.md)
 
@@ -193,15 +194,14 @@ These two fields together let AI reconstruct the full call chain from flat conso
 
 ---
 
-## 3-Layer AI System
+## 2-Layer AI System (V5)
 
 | Layer | When loaded | Token cost | Contains |
 |---|---|---|---|
-| **Rules** | Every session (automatic) | ~500 | 5 core principles — trace, read graph, activate, silence, record |
-| **Workflows** | On demand (`/ats-debug`, `/ats-instrument`, `/ats-review`) | ~800 | Step-by-step guides for specific tasks |
-| **MCP Server** | When called | ~0 | 7 automated tools — zero token overhead |
+| **Hook** | Every session (automatic) | ~30 | 4 rules — "call ats_init first, no print(), no remove trace, silence when done" |
+| **MCP Server** | When called | ~400 (init) / ~0 (tools) | `ats_init` delivers protocol + `next_action` hints guide workflow automatically |
 
-Rules ensure AI always follows the protocol. Workflows provide detailed guides when needed. MCP tools eliminate manual JSON editing entirely.
+In V5, intelligence lives in the MCP Server — not in text files. The hook is minimal. The server is smart. Workflow files are gone.
 
 ---
 
@@ -220,16 +220,21 @@ Six algorithms integrated in `core/dag.ts` for deep analysis:
 
 ---
 
-## Web Visualization
+## Web Dashboard
 
-Interactive DAG browser with D3.js force-directed graph:
+Interactive flow control dashboard with D3.js graph visualization:
 
 ```bash
 npx tsx packages/ats-mcp-server/src/web/web-server.ts .
 # → http://localhost:4567
 ```
 
-Dark theme · Click-to-filter · PageRank-sized nodes · Edge coloring · Draggable + zoomable
+**Features:**
+- **Flow list** — Toggle flows on/off with iOS-style switches
+- **Flow detail** — Class tree, method checkboxes, edge table, session timeline
+- **Method muting** — Uncheck noisy methods (e.g. loop-heavy `addValue`) to suppress logs without removing traces
+- **D3 graph** — Force-directed DAG with PageRank-sized nodes, click to navigate
+- **Dark theme** — GitHub-style dark mode, Inter + JetBrains Mono typography
 
 ---
 

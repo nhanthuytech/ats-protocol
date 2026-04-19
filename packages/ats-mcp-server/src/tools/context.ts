@@ -64,5 +64,18 @@ export function contextTool(graph: FlowGraph, args: Record<string, unknown>) {
     relevantKeys.has(e.from) || relevantKeys.has(e.to)
   );
 
-  return { target_flow: flowName, context_flows: flowContexts, edges: relevantEdges, traversal_depth: maxDepth };
+  const hasActiveFlow = flowContexts.some(f => f.active);
+  const targetActive = allFlows[flowName]?.active ?? false;
+
+  return {
+    target_flow: flowName,
+    context_flows: flowContexts,
+    edges: relevantEdges,
+    traversal_depth: maxDepth,
+    next_action: targetActive
+      ? `Flow ${flowName} is already ACTIVE. Hot Restart if not done yet. Read logs and call ats_analyze() with console output.`
+      : hasActiveFlow
+        ? `Some upstream flows are active. If debugging, call ats_activate('${flowName}'). Otherwise, proceed with task — context is loaded.`
+        : `Context loaded for ${flowName}. If debugging: call ats_activate('${flowName}') then tell user to Hot Restart. If developing: add ATS.trace() to new methods and register them in the graph.`,
+  };
 }

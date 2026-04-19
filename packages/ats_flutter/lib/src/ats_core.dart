@@ -24,6 +24,7 @@ import 'log_writer.dart';
 class ATS {
   static FlowRegistry? _registry;
   static LogWriter? _writer;
+  static Set<String> _mutedMethods = {};
   static bool _initialized = false;
 
   // Private constructor — ATS is a static-only class.
@@ -39,14 +40,20 @@ class ATS {
   /// `lib/ats_generated.dart` file automatically created by `ats sync`.
   static Future<void> internalInit(
     Map<String, List<String>> staticMap,
-    List<String> activeFlows,
-  ) async {
+    List<String> activeFlows, [
+    Set<String>? mutedMethods,
+  ]) async {
     if (kReleaseMode) return;
     if (_initialized) return;
 
     _registry = FlowRegistry.fromNative(staticMap, activeFlows);
+    _mutedMethods = mutedMethods ?? {};
     _writer = await LogWriter.create();
     _initialized = true;
+
+    if (_mutedMethods.isNotEmpty) {
+      debugPrint('[ATS] Muted methods: ${_mutedMethods.length}');
+    }
   }
 
   /// [DEPRECATED] — ATS V3 uses Dart CodeGen instead of dart-defines.
@@ -93,9 +100,12 @@ class ATS {
   }) {
     if (kReleaseMode || !_initialized || _registry == null) return;
 
+    // O(1) muted check — skips noisy methods without removing them from graph
+    final key = '$className.$methodName';
+    if (_mutedMethods.contains(key)) return;
+
     final flows = _registry!.getFlowsForMethod(className, methodName);
-    if (flows.isEmpty)
-      return; // O(1) active check — inactive flows are not mapped.
+    if (flows.isEmpty) return;
 
     final seq = _nextSeq();
     final depth = _currentDepth();

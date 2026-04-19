@@ -40,10 +40,17 @@ class AtsRunner {
         await _runFlowToggle(rest, true);
       case 'silence':
         await _runFlowToggle(rest, false);
+      case 'mute':
+        await _runMute(rest, true);
+      case 'unmute':
+        await _runMute(rest, false);
       case 'flows':
         await _runFlows();
       case 'graph':
         await _runGraph(rest);
+      case 'dashboard':
+      case 'web':
+        await _runDashboard();
       case '--version':
       case '-v':
         print('ats $_version');
@@ -55,6 +62,67 @@ class AtsRunner {
         _err('Unknown command: "$command". Run `ats help` for usage.');
         exit(1);
     }
+  }
+
+  // ───────────────────────────────────────────────────
+  // ats dashboard
+  // ───────────────────────────────────────────────────
+
+  static Future<void> _runDashboard() async {
+    // Find node binary
+    final nodeResult = await Process.run('which', ['node']);
+    if (nodeResult.exitCode != 0) {
+      _err('Node.js not found. Install Node.js to use the ATS Dashboard.');
+      exit(1);
+    }
+
+    // Locate web-server.js — navigate up from snapshot location to packages/
+    // Snapshot path: {ats_flutter}/.dart_tool/pub/bin/ats_flutter/ats.dart-*.snapshot
+    // We walk up until we find a directory that has ats-mcp-server as sibling.
+    final scriptPath = Platform.script.toFilePath();
+    String? webServerPath;
+
+    // Walk up from script path looking for the packages/ dir
+    Directory? dir = Directory(p.dirname(scriptPath));
+    for (var i = 0; i < 10; i++) {
+      final candidate = p.join(
+        dir!.path,
+        'ats-mcp-server',
+        'dist',
+        'web',
+        'web-server.js',
+      );
+      if (File(candidate).existsSync()) {
+        webServerPath = candidate;
+        break;
+      }
+      final parent = dir.parent;
+      if (parent.path == dir.path) break; // reached filesystem root
+      dir = parent;
+    }
+
+    if (webServerPath == null) {
+      _err(
+        'ATS web server not found. Make sure ats-mcp-server is built:\n'
+        '  cd packages/ats-mcp-server && npx tsc',
+      );
+      exit(1);
+    }
+
+    final projectRoot = Directory.current.path;
+    _ok('🧠 Starting ATS Dashboard...');
+    print('   Project: $projectRoot');
+    print('   URL:     http://localhost:4567');
+    print('');
+    print('   Press Ctrl+C to stop.');
+    print('');
+
+    final process = await Process.start(
+      'node',
+      [webServerPath, projectRoot],
+      mode: ProcessStartMode.inheritStdio,
+    );
+    exit(await process.exitCode);
   }
 
   // ───────────────────────────────────────────────────
@@ -106,7 +174,8 @@ class AtsRunner {
 
       // ── Cycle detection on depends_on (Kahn's algorithm) ──
       if (!_validateNoCycles(flows)) {
-        _err('Circular dependency detected in depends_on. Fix flow_graph.json before syncing.');
+        _err(
+            'Circular dependency detected in depends_on. Fix flow_graph.json before syncing.');
         return;
       }
 
@@ -135,7 +204,8 @@ class AtsRunner {
             methods = classValue.cast<String>();
           } else if (classValue is Map) {
             // V4 format: "ClassName": { "methods": ["method1", "method2"], ... }
-            methods = (classValue['methods'] as List<dynamic>?)?.cast<String>() ?? [];
+            methods =
+                (classValue['methods'] as List<dynamic>?)?.cast<String>() ?? [];
           } else {
             continue;
           }
@@ -156,6 +226,31 @@ class AtsRunner {
       }
       mapBuffer.writeln('};');
 
+      // ── Collect muted methods across ALL flows ──
+      final mutedMethods = <String>{};
+      for (final flowName in flows.keys) {
+        final flowNode = flows[flowName] as Map<String, dynamic>;
+        final classes = flowNode['classes'] as Map<String, dynamic>? ?? {};
+        for (final className in classes.keys) {
+          final classValue = classes[className];
+          if (classValue is Map) {
+            final muted =
+                (classValue['muted'] as List<dynamic>?)?.cast<String>() ?? [];
+            for (final method in muted) {
+              mutedMethods.add('$className.$method');
+            }
+          }
+        }
+      }
+
+      // Format muted set to Dart code
+      final mutedBuffer = StringBuffer();
+      mutedBuffer.writeln('const _kMutedMethods = <String>{');
+      for (final key in mutedMethods) {
+        mutedBuffer.writeln("  '$key',");
+      }
+      mutedBuffer.writeln('};');
+
       final activeFlowsString = activeFlows.map((e) => "'$e'").join(', ');
 
       final dartCode = '''
@@ -166,12 +261,14 @@ import 'package:ats_flutter/ats_flutter.dart';
 
 $mapBuffer
 
+$mutedBuffer
+
 const _kActiveFlows = <String>[$activeFlowsString];
 
 abstract class AtsGenerated {
   static void init() {
     ATS.resetSequence();
-    ATS.internalInit(_kMethodMap, _kActiveFlows);
+    ATS.internalInit(_kMethodMap, _kActiveFlows, _kMutedMethods);
   }
 }
 ''';
@@ -236,14 +333,17 @@ abstract class AtsGenerated {
     // Build set of all known "Class.method" keys
     final known = <String>{};
     for (final flowNode in flows.values) {
-      final classes = (flowNode as Map<String, dynamic>)['classes'] as Map<String, dynamic>? ?? {};
+      final classes = (flowNode as Map<String, dynamic>)['classes']
+              as Map<String, dynamic>? ??
+          {};
       for (final className in classes.keys) {
         final classValue = classes[className];
         List<String> methods;
         if (classValue is List) {
           methods = classValue.cast<String>();
         } else if (classValue is Map) {
-          methods = (classValue['methods'] as List<dynamic>?)?.cast<String>() ?? [];
+          methods =
+              (classValue['methods'] as List<dynamic>?)?.cast<String>() ?? [];
         } else {
           continue;
         }
@@ -632,9 +732,110 @@ abstract class AtsGenerated {
     _ok('$icon $flowName is now ${activate ? 'ACTIVE' : 'SILENT'}');
 
     print('');
-    print('   ⚠️  LƯU Ý KHI UPDATE LOG KHÔNG HIỆN:');
-    print(
-        '   • Dùng Hot Restart (phím r hoặc F5) để Flutter nạp lại tệp ${config.outputDir}/${config.outputFile}.');
+    print('   ⚠️  Hot Restart (Shift+R or F5) to apply changes.');
+  }
+
+  // ───────────────────────────────────────────────────
+  // ats mute <Class.method> / ats unmute <Class.method>
+  // ───────────────────────────────────────────────────
+
+  static Future<void> _runMute(List<String> args, bool mute) async {
+    if (args.isEmpty) {
+      _err('Usage: ats ${mute ? 'mute' : 'unmute'} <ClassName.methodName>');
+      exit(1);
+    }
+
+    final target = args[0];
+    final parts = target.split('.');
+    if (parts.length != 2) {
+      _err(
+          'Invalid format. Use: ClassName.methodName (e.g. MatrixColumn.addValue)');
+      exit(1);
+    }
+    final className = parts[0];
+    final methodName = parts[1];
+
+    final graphFile = _findGraphFile();
+    if (graphFile == null) return;
+
+    final raw = graphFile.readAsStringSync();
+    final graph = jsonDecode(raw) as Map<String, dynamic>;
+    final flows = graph['flows'] as Map<String, dynamic>? ?? {};
+
+    // Find the class in any flow and update its muted array
+    bool found = false;
+    for (final flowName in flows.keys) {
+      final flowNode = flows[flowName] as Map<String, dynamic>;
+      final classes = flowNode['classes'] as Map<String, dynamic>? ?? {};
+
+      if (!classes.containsKey(className)) continue;
+
+      final classValue = classes[className];
+      List<String> methods;
+      List<String> muted;
+
+      if (classValue is List) {
+        // V3 format → upgrade to V4
+        methods = classValue.cast<String>();
+        muted = [];
+        classes[className] = {
+          'methods': methods,
+          'muted': muted,
+        };
+      } else if (classValue is Map<String, dynamic>) {
+        methods =
+            (classValue['methods'] as List<dynamic>?)?.cast<String>() ?? [];
+        muted = (classValue['muted'] as List<dynamic>?)?.cast<String>() ?? [];
+      } else {
+        continue;
+      }
+
+      if (!methods.contains(methodName)) {
+        _err(
+            'Method "$methodName" not found in $className. Available: ${methods.join(', ')}');
+        exit(1);
+      }
+
+      final classMap = classes[className] as Map<String, dynamic>;
+
+      if (mute) {
+        if (muted.contains(methodName)) {
+          _warn('$className.$methodName is already muted.');
+          return;
+        }
+        muted.add(methodName);
+        classMap['muted'] = muted;
+        found = true;
+        _ok('🔇 $className.$methodName muted in $flowName');
+      } else {
+        if (!muted.contains(methodName)) {
+          _warn('$className.$methodName is not muted.');
+          return;
+        }
+        muted.remove(methodName);
+        classMap['muted'] = muted;
+        found = true;
+        _ok('🔊 $className.$methodName unmuted in $flowName');
+      }
+    }
+
+    if (!found) {
+      _err('Class "$className" not found in any flow.');
+      exit(1);
+    }
+
+    graph['updated_at'] = DateTime.now().toIso8601String();
+    graphFile.writeAsStringSync(
+      const JsonEncoder.withIndent('  ').convert(graph),
+    );
+
+    // Auto-sync
+    final config = AtsConfig.load(graphFile.parent.parent.path);
+    final generatedFile = config.generatedFile;
+    await _generateDartCode(graphFile, generatedFile);
+
+    print('');
+    print('   ⚠️  Hot Restart (Shift+R or F5) to apply changes.');
   }
 
   // ───────────────────────────────────────────────────
@@ -793,6 +994,8 @@ abstract class AtsGenerated {
   flows                   List flows with classes and methods
   activate <FLOW>         Set a flow active (start logging)
   silence <FLOW>          Silence a flow (stop logging)
+  mute <Class.method>     Suppress a noisy method (keeps trace in code)
+  unmute <Class.method>   Re-enable a muted method
   graph                   Export DAG as Mermaid diagram
 
 \x1B[1mEXAMPLES\x1B[0m

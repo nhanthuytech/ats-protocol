@@ -12,7 +12,13 @@
     "dev": "tsx src/index.ts",
     "web": "tsx src/web/web-server.ts"
   },
-  "keywords": ["ats", "mcp", "ai-agent", "telemetry", "dag"],
+  "keywords": [
+    "ats",
+    "mcp",
+    "ai-agent",
+    "telemetry",
+    "dag"
+  ],
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
