@@ -1,0 +1,14 @@
+{
+  "name": "ats-marketplace",
+  "owner": {
+    "name": "nhanthuytech",
+    "email": "nhanthuytech@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "ats-protocol",
+      "description": "Agentic Telemetry Standard — AI-driven flow telemetry",
+      "source": "./plugins/ats-protocol"
+    }
+  ]
+}

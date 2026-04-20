@@ -1,16 +1,19 @@
 {
   "name": "ats-mcp-server",
-  "version": "0.1.0",
+  "version": "5.0.0",
   "description": "ATS Protocol MCP Server — Universal AI agent tools for flow graph management",
   "main": "dist/index.js",
+  "type": "module",
   "bin": {
-    "ats-mcp": "dist/index.js"
+    "ats": "dist/cli.js",
+    "ats-mcp": "dist/index.js",
+    "ats-dashboard": "dist/web/web-server.js"
   },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "web": "tsx src/web/web-server.ts"
+    "dashboard": "node dist/web/web-server.js"
   },
   "keywords": [
     "ats",

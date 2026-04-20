@@ -10,32 +10,73 @@ This document is for contributors who want to bring ATS support to a new languag
 
 - [Overview: What You're Building](#overview)
 - [Part 1: The Runtime SDK](#part-1-the-runtime-sdk)
-- [Part 2: The CLI](#part-2-the-cli)
-- [Part 3: The CodeGen System](#part-3-the-codegen-system)
-- [Part 4: Testing](#part-4-testing)
-- [Part 5: Publishing](#part-5-publishing)
+- [Part 2: CodeGen (Handled by MCP Server)](#part-2-codegen-handled-by-mcp-server)
+- [Part 3: Testing](#part-3-testing)
+- [Part 4: Publishing](#part-4-publishing)
 - [Reference Implementations](#reference-implementations)
 
 ---
 
 ## Overview
 
-An ATS language SDK has three components:
+### V5 Architecture — What You Build vs What's Already Done
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  1. Runtime SDK          trace() + registry          │
-│  2. CLI                  init, sync, activate, etc.  │
-│  3. CodeGen              JSON → native lookup table  │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                    ATS Protocol V5 Architecture                      │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ✅ ALREADY BUILT (Universal — works for ALL languages)              │
+│  ┌────────────────────────────────────────────────────────────────┐  │
+│  │  MCP Server (TypeScript)                                       │  │
+│  │  • 8 AI tools (init, context, activate, silence, ...)         │  │
+│  │  • CLI (init, sync, activate — via npx)                       │  │
+│  │  • CodeGen (auto-generates native code for detected language) │  │
+│  │  • Web Dashboard (D3.js flow visualization)                   │  │
+│  │  • Auto-discovery (finds .ats/ in monorepos)                  │  │
+│  └────────────────────────────────────────────────────────────────┘  │
+│                                                                      │
+│  🔧 YOU BUILD (per language — runs inside user's application)        │
+│  ┌────────────────────────────────────────────────────────────────┐  │
+│  │  Runtime SDK                                                   │  │
+│  │  • trace(className, methodName, data?)   — the trace function │  │
+│  │  • internalInit(methodMap, activeFlows)  — startup loader     │  │
+│  │  • FlowRegistry                         — O(1) method lookup  │  │
+│  │  • LogWriter (optional)                  — file-based logs    │  │
+│  └────────────────────────────────────────────────────────────────┘  │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 You do **not** need to build:
-- ❌ MCP Server — the TypeScript server is universal, works for all languages
-- ❌ Web Visualization — same, already built
-- ❌ AI Skills — they're language-agnostic
 
-You **only** build the runtime (trace function + flow registry) and the CLI (to manage the graph).
+- ❌ **MCP Server** — universal, works for all languages
+- ❌ **CLI** — the MCP server includes CLI commands (`npx ats-mcp-server init`, etc.)
+- ❌ **CodeGen** — the MCP server auto-detects your language and generates native code
+- ❌ **Web Dashboard** — already built, language-agnostic
+- ❌ **AI Skills** — language-agnostic, bundled in the Claude Plugin
+
+You **only** build the **Runtime SDK** — the code that runs **inside the user's application** (on their phone, server, or browser).
+
+### What is a "Runtime SDK"?
+
+The Runtime SDK is a small library that:
+1. **Runs inside the user's app** — on iPhone, Android, Node.js server, Python backend, etc.
+2. **Provides `ATS.trace()`** — the function AI agents insert into source code
+3. **Checks if a method is in an active flow** — O(1) hash map lookup
+4. **Prints structured logs** — when active, in `[ATS][FLOW][#SEQ][dDEPTH] Class.method` format
+5. **Does nothing in production** — zero overhead when disabled or in release mode
+
+```
+Design-time (MCP Server)              Runtime (Your SDK)
+─────────────────────────────         ─────────────────────────────
+Runs on developer's machine           Runs inside user's application
+Node.js / TypeScript                   Your target language (Dart, Python, etc.)
+Reads/writes flow_graph.json           Reads the generated native code
+Generates .g.dart / .generated.ts      Executes ATS.trace() at method entry
+AI agent uses MCP tools                Developer's app calls trace()
+Stops when dev closes terminal         Runs when user opens the app
+```
 
 ---
 
@@ -50,23 +91,29 @@ Your SDK must implement two functions:
 ```
 FUNCTION trace(className: string, methodName: string, data?: any):
   1. IF release mode → RETURN immediately (zero production cost)
-  2. key = className + "." + methodName
-  3. flows = methodMap.get(key)
-  4. IF flows is null → RETURN (O(1) miss)
-  5. FOR each flow in flows:
+  2. IF not initialized → RETURN
+  3. key = className + "." + methodName
+  4. IF mutedMethods.contains(key) → RETURN (O(1) skip noisy methods)
+  5. flows = methodMap.get(key)
+  6. IF flows is null → RETURN (O(1) miss)
+  7. FOR each flow in flows:
        IF flow is in activeFlows:
          seq = incrementGlobalSequence()
          depth = computeDepth()
          PRINT "[ATS][{flow}][#{seq}][d{depth}] {className}.{methodName} | {data}"
          RETURN
-  6. RETURN (method exists but no active flow)
+  8. RETURN (method exists but no active flow)
 ```
 
-#### `internalInit(methodMap, activeFlows)`
+#### `internalInit(methodMap, activeFlows, mutedMethods?)`
 
 ```
-FUNCTION internalInit(methodMap: Map<string, string[]>, activeFlows: Set<string>):
-  store methodMap and activeFlows in module-level variables
+FUNCTION internalInit(
+  methodMap: Map<string, string[]>,
+  activeFlows: Set<string>,
+  mutedMethods?: Set<string>
+):
+  store methodMap, activeFlows, and mutedMethods in module-level variables
   (called once at app startup from generated code)
 ```
 
@@ -77,6 +124,7 @@ FUNCTION internalInit(methodMap: Map<string, string[]>, activeFlows: Set<string>
 | O(1) lookup | Method → flow lookup must be constant time (hash map) | 🔴 Critical |
 | No-op when inactive | If method isn't in an active flow, cost must be near-zero | 🔴 Critical |
 | Release mode guard | First check must be environment/build mode detection | 🔴 Critical |
+| Muted methods | Skip methods in the `mutedMethods` set (V4+ feature) | 🔴 Critical |
 | Sequence counter | Global atomic integer, increments on each trace call | 🟡 Important |
 | Depth computation | Derive from stack trace or manual tracking | 🟡 Important |
 | Structured log format | `[ATS][FLOW][#SEQ][dDEPTH] Class.method \| {data}` | 🟡 Important |
@@ -86,26 +134,61 @@ FUNCTION internalInit(methodMap: Map<string, string[]>, activeFlows: Set<string>
 ### Language-Specific Examples
 
 <details>
+<summary><b>Dart/Flutter</b> (reference implementation)</summary>
+
+```dart
+// Already implemented in packages/ats_flutter/lib/src/ats_core.dart
+class ATS {
+  static Map<String, List<String>>? _methodMap;
+  static Set<String> _activeFlows = {};
+  static Set<String> _mutedMethods = {};
+  static int _seq = 0;
+  static bool _initialized = false;
+
+  static void trace(String className, String methodName, {dynamic data}) {
+    if (kReleaseMode || !_initialized) return;
+    final key = '$className.$methodName';
+    if (_mutedMethods.contains(key)) return;
+    // ... lookup and print
+  }
+
+  static Future<void> internalInit(
+    Map<String, List<String>> staticMap,
+    List<String> activeFlows, [
+    Set<String>? mutedMethods,
+  ]) async {
+    _methodMap = staticMap;
+    _activeFlows = Set.from(activeFlows);
+    _mutedMethods = mutedMethods ?? {};
+    _initialized = true;
+  }
+}
+```
+</details>
+
+<details>
 <summary><b>Node.js / TypeScript</b></summary>
 
 ```typescript
 // ats-node/src/ats.ts
-
 let methodMap: Map<string, string[]> = new Map();
 let activeFlows: Set<string> = new Set();
+let mutedMethods: Set<string> = new Set();
 let sequence = 0;
 
 export function trace(className: string, methodName: string, data?: any): void {
   if (process.env.NODE_ENV === 'production') return;
 
   const key = `${className}.${methodName}`;
+  if (mutedMethods.has(key)) return;
+
   const flows = methodMap.get(key);
   if (!flows) return;
 
   for (const flow of flows) {
     if (activeFlows.has(flow)) {
       const seq = String(++sequence).padStart(3, '0');
-      const depth = getDepth(); // from Error().stack
+      const depth = getDepth();
       const dataStr = data ? ` | ${JSON.stringify(data)}` : '';
       console.log(`[ATS][${flow}][#${seq}][d${depth}] ${key}${dataStr}`);
       return;
@@ -115,15 +198,16 @@ export function trace(className: string, methodName: string, data?: any): void {
 
 export function internalInit(
   map: Record<string, string[]>,
-  active: string[]
+  active: string[],
+  muted?: string[]
 ): void {
   methodMap = new Map(Object.entries(map));
   activeFlows = new Set(active);
+  mutedMethods = new Set(muted ?? []);
 }
 
 function getDepth(): number {
   const stack = new Error().stack?.split('\n') || [];
-  // Count frames between trace() and the app's entry point
   return Math.max(0, stack.length - 4);
 }
 ```
@@ -134,13 +218,13 @@ function getDepth(): number {
 
 ```python
 # ats_python/ats.py
-
 import json
 import traceback
 import os
 
 _method_map: dict[str, list[str]] = {}
 _active_flows: set[str] = set()
+_muted_methods: set[str] = set()
 _sequence = 0
 
 def trace(class_name: str, method_name: str, data=None):
@@ -150,6 +234,9 @@ def trace(class_name: str, method_name: str, data=None):
         return
 
     key = f"{class_name}.{method_name}"
+    if key in _muted_methods:
+        return
+
     flows = _method_map.get(key)
     if not flows:
         return
@@ -163,10 +250,11 @@ def trace(class_name: str, method_name: str, data=None):
             print(f"[ATS][{flow}][#{seq}][d{depth}] {key}{data_str}")
             return
 
-def internal_init(method_map: dict, active_flows: list):
-    global _method_map, _active_flows
+def internal_init(method_map: dict, active_flows: list, muted_methods: list = None):
+    global _method_map, _active_flows, _muted_methods
     _method_map = method_map
     _active_flows = set(active_flows)
+    _muted_methods = set(muted_methods or [])
 ```
 </details>
 
@@ -175,12 +263,12 @@ def internal_init(method_map: dict, active_flows: list):
 
 ```swift
 // ATSSwift/Sources/ATS.swift
-
 import Foundation
 
 public final class ATS {
     static var methodMap: [String: [String]] = [:]
     static var activeFlows: Set<String> = []
+    static var mutedMethods: Set<String> = []
     static var sequence: Int = 0
 
     public static func trace(
@@ -193,6 +281,7 @@ public final class ATS {
         #endif
 
         let key = "\(className).\(methodName)"
+        guard !mutedMethods.contains(key) else { return }
         guard let flows = methodMap[key] else { return }
 
         for flow in flows {
@@ -214,10 +303,12 @@ public final class ATS {
 
     public static func internalInit(
         methodMap: [String: [String]],
-        activeFlows: [String]
+        activeFlows: [String],
+        mutedMethods: [String] = []
     ) {
         self.methodMap = methodMap
         self.activeFlows = Set(activeFlows)
+        self.mutedMethods = Set(mutedMethods)
     }
 }
 ```
@@ -225,78 +316,46 @@ public final class ATS {
 
 ---
 
-## Part 2: The CLI
+## Part 2: CodeGen (Handled by MCP Server)
 
-Your SDK should include a CLI that manages the flow graph. Implement these commands:
+> **You do NOT need to implement CodeGen.** The MCP Server handles this automatically.
 
-| Command | What it does | Priority |
-|---|---|---|
-| `ats init` | Create `.ats/flow_graph.json` with empty graph, create generated file | 🔴 Critical |
-| `ats sync` | Compile `flow_graph.json` → generated native code | 🔴 Critical |
-| `ats activate <FLOW>` | Set `active: true` in JSON + auto-run sync | 🔴 Critical |
-| `ats silence <FLOW>` | Set `active: false` in JSON + auto-run sync | 🔴 Critical |
-| `ats status` | Print all flows with active/inactive state | 🟡 Important |
-| `ats graph` | Export flow dependencies as Mermaid diagram | 🟢 Nice to have |
+### How It Works (V5)
 
-### CLI Implementation Notes
+In V5, the MCP Server's `FlowGraph.write()` method automatically detects the project language and generates native code:
 
-- **Read/write `flow_graph.json`** — All commands modify this single file.
-- **Auto-sync after activate/silence** — The user shouldn't need to run two commands.
-- **Validate before sync** — Check for duplicate methods, missing classes, etc.
-- **Respect `ats.yaml`** — If it exists, use its paths. Otherwise use defaults.
+| Detected File | Language | Generated File | Status |
+|---|---|---|---|
+| `pubspec.yaml` | Dart/Flutter | `lib/generated/ats/ats_generated.g.dart` | ✅ Built |
+| `package.json` | TypeScript/Node.js | _(can load JSON directly)_ | ✅ No codegen needed |
+| `pyproject.toml` | Python | _(can load JSON directly)_ | ✅ No codegen needed |
 
-### Default Paths
+### Why Dart Needs CodeGen but Others Don't
 
-| Setting | Default |
-|---|---|
-| Graph file | `.ats/flow_graph.json` |
-| Generated output | `lib/generated/ats/` (Dart), `src/generated/ats/` (TS), etc. |
-| Log output | `.ats/logs/` |
+- **Node.js/Python** can `require()` / `json.load()` a JSON file synchronously at startup → no codegen needed
+- **Dart/Flutter** loading files at runtime is async and complex → static code generation compiles the JSON into a `const Map` for instant synchronous access
 
----
+### If Your Language Needs CodeGen
 
-## Part 3: The CodeGen System
+If your target language cannot easily load JSON at startup (like Dart), you can add a **CodeGen Plugin** to the MCP Server:
 
-### Why CodeGen?
+```typescript
+// packages/ats-mcp-server/src/codegen/your-language-plugin.ts
+import { CodeGenPlugin } from './plugin.js';
 
-The flow graph is JSON. Reading JSON at runtime costs startup time and prevents compile-time optimization. Instead, we compile JSON into a native data structure.
-
-### What to Generate
-
-Your sync command should produce a file like this (adapt for your language):
-
-```
-// AUTO-GENERATED BY ATS CLI — DO NOT EDIT
-
-import { internalInit } from 'ats-node';
-
-const METHOD_MAP = {
-  'PaymentService.processPayment': ['PAYMENT_FLOW'],
-  'PaymentService.refund': ['PAYMENT_FLOW'],
-  'CartService.checkout': ['CHECKOUT_FLOW'],
+export const yourLanguagePlugin: CodeGenPlugin = {
+  detectFile: 'your-manifest-file',  // e.g. 'Package.swift' for Swift
+  generate(data, projectRoot, config) {
+    // Generate native code file with const maps
+  }
 };
-
-const ACTIVE_FLOWS = ['CHECKOUT_FLOW'];
-
-export function initATS() {
-  internalInit(METHOD_MAP, ACTIVE_FLOWS);
-}
 ```
 
-### CodeGen Checklist
-
-| Requirement | Description |
-|---|---|
-| **Static/const** | Use your language's compile-time constant mechanism |
-| **Single file** | One generated file containing the full map |
-| **Auto-generated header** | `// AUTO-GENERATED BY ATS CLI — DO NOT EDIT` |
-| **Import only the SDK** | No other dependencies |
-| **Init function** | One function that calls `internalInit()` |
-| **Deterministic** | Same input JSON → same output file (for clean git diffs) |
+Register it in `src/codegen/registry.ts` and it will auto-run on every `FlowGraph.write()`.
 
 ---
 
-## Part 4: Testing
+## Part 3: Testing
 
 ### Minimum Test Coverage
 
@@ -305,7 +364,8 @@ export function initATS() {
 | **Init test** | `internalInit()` loads map correctly |
 | **Active flow trace** | Calling `trace()` for an active method produces output |
 | **Inactive flow trace** | Calling `trace()` for an inactive method produces NO output |
-| **Unknown method** | Calling `trace()` for an method not in any flow produces NO output |
+| **Unknown method** | Calling `trace()` for a method not in any flow produces NO output |
+| **Muted method** | Calling `trace()` for a muted method produces NO output |
 | **Multi-flow method** | A method in 2 flows: trace when either is active |
 | **Sequence counter** | Sequence numbers increment correctly |
 | **Log format** | Output matches `[ATS][FLOW][#SEQ][dDEPTH] Class.method` pattern |
@@ -324,6 +384,11 @@ TEST "inactive flow produces no log":
   output = captureStdout(() => trace("Foo", "bar"))
   ASSERT output is empty
 
+TEST "muted method produces no log":
+  init({ "Foo.bar": ["TEST_FLOW"] }, ["TEST_FLOW"], ["Foo.bar"])
+  output = captureStdout(() => trace("Foo", "bar"))
+  ASSERT output is empty
+
 TEST "unknown method produces no log":
   init({}, ["TEST_FLOW"])
   output = captureStdout(() => trace("Unknown", "method"))
@@ -332,20 +397,23 @@ TEST "unknown method produces no log":
 
 ---
 
-## Part 5: Publishing
+## Part 4: Publishing
 
-### Package Structure
+### Package Structure (Runtime SDK Only)
 
 ```
 ats_<language>/
-├── README.md               # Usage guide (see ats_flutter/README.md for reference)
+├── README.md               # Usage guide
 ├── LICENSE                  # MIT
 ├── src/                     # Runtime SDK source
 │   ├── ats.{ext}            # trace() + internalInit()
-│   └── cli/                 # CLI commands
+│   ├── flow_registry.{ext}  # O(1) lookup (optional, can inline)
+│   └── log_writer.{ext}     # File logging (optional)
 ├── test/                    # Unit tests
 └── <package-manifest>       # pubspec.yaml / package.json / setup.py / etc.
 ```
+
+> **Note:** No `cli/` directory needed. CLI is handled by the MCP Server.
 
 ### Naming Convention
 
@@ -360,13 +428,11 @@ ats_<language>/
 ### Checklist Before Publishing
 
 - [ ] README with installation + usage examples
-- [ ] All 7 minimum tests passing
-- [ ] CLI: init, sync, activate, silence working
-- [ ] CodeGen produces deterministic output
-- [ ] `ats_version: "4.0.0"` in generated flow graph
+- [ ] All 8 minimum tests passing (including muted method test)
+- [ ] `trace()` + `internalInit()` + muted methods support
+- [ ] Zero overhead in release/production mode
 - [ ] CI job added to `.github/workflows/ci.yml`
 - [ ] Root `README.md` language table updated
-- [ ] `CONTRIBUTING.md` updated with new SDK instructions
 
 ---
 
@@ -374,18 +440,19 @@ ats_<language>/
 
 | SDK | Language | Location | Status |
 |---|---|---|---|
-| **ats_flutter** | Dart | [packages/ats_flutter](../packages/ats_flutter/) | ✅ Released — use as primary reference |
+| **ats_flutter** | Dart | [packages/ats_flutter](../packages/ats_flutter/) | ✅ Released — runtime SDK reference |
+| **ats-mcp-server** | TypeScript | [packages/ats-mcp-server](../packages/ats-mcp-server/) | ✅ Released — universal CLI + CodeGen + tools |
 | **ats-node** | TypeScript | — | 🔜 Planned |
 | **ats-python** | Python | — | 🔜 Planned |
 
-The Flutter SDK is the most complete reference. Study these files:
+### Key Files to Study
 
-| File | What to learn from it |
+| File | What to learn |
 |---|---|
-| [ats_core.dart](../packages/ats_flutter/lib/src/ats_core.dart) | `trace()` implementation with sequence + depth |
+| [ats_core.dart](../packages/ats_flutter/lib/src/ats_core.dart) | `trace()` implementation with sequence + depth + muting |
 | [flow_registry.dart](../packages/ats_flutter/lib/src/flow_registry.dart) | O(1) lookup registry |
-| [runner.dart](../packages/ats_flutter/lib/src/cli/runner.dart) | CLI implementation (init, sync, activate, silence) |
-| [ats_flutter_test.dart](../packages/ats_flutter/test/ats_flutter_test.dart) | Test patterns |
+| [flow-graph.ts](../packages/ats-mcp-server/src/core/flow-graph.ts) | CodeGen system (how MCP auto-generates native code) |
+| [instrument.ts](../packages/ats-mcp-server/src/tools/instrument.ts) | Multi-language parser (Dart, TS, Python) |
 
 ---
 
@@ -393,6 +460,6 @@ The Flutter SDK is the most complete reference. Study these files:
 
 - Open an issue with the label `new-sdk`
 - Reference `spec/protocol.md` for the full protocol contract
-- The MCP Server (`packages/ats-mcp-server`) already supports instrumenting your language (Dart, TS, Python) — your SDK just needs the runtime + CLI
+- The MCP Server already handles CLI, CodeGen, and AI tools — your SDK only needs the runtime
 
 **Thank you for expanding the ATS ecosystem!**

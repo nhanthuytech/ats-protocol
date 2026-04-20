@@ -1,4 +1,4 @@
-# ATS Flutter — Dart/Flutter SDK
+# ATS Flutter — Runtime SDK
 
 > **Structured, switchable telemetry for Flutter apps — designed for AI agents.**
 
@@ -9,12 +9,34 @@
 
 ## What It Does
 
-`ats_flutter` adds a single tracing function — `ATS.trace()` — to your Flutter app. Unlike `print()` or `debugPrint()`, ATS traces are:
+`ats_flutter` is the **Runtime SDK** — it provides `ATS.trace()` which runs **inside your Flutter app** on the user's device. Unlike `print()` or `debugPrint()`, ATS traces are:
 
 - **Switchable** — Turn flows on/off without touching code. No more commenting out logs.
 - **Structured** — Sequence numbers + call depth let AI reconstruct exact call chains.
 - **Persistent** — Knowledge accumulates in `flow_graph.json`, committed to git. AI never starts from scratch.
 - **Zero-cost** — In release builds, `ATS.trace()` short-circuits before any logic. Zero overhead.
+- **Mutable** — Individual methods can be muted to suppress noisy logs without removing them from the graph.
+
+---
+
+## V5 Architecture — Where This Package Fits
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  MCP Server (TypeScript)        ← Universal, all languages      │
+│  • AI tools (init, activate, silence, instrument, ...)          │
+│  • CLI (init, sync, activate)                                   │
+│  • CodeGen (auto-generates ats_generated.g.dart)                │
+│  • Web Dashboard (D3.js visualization at localhost:4567)        │
+├──────────────────────────────────────────────────────────────────┤
+│  ats_flutter (Dart)             ← THIS PACKAGE                  │
+│  • ATS.trace()                  — runs inside your Flutter app  │
+│  • FlowRegistry                 — O(1) method→flow lookup       │
+│  • LogWriter                    — file-based log persistence    │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+> **Note:** CLI commands (`init`, `sync`, `activate`, `silence`) are handled by the MCP Server. This package is runtime-only.
 
 ---
 
@@ -23,17 +45,12 @@
 ```yaml
 # pubspec.yaml
 dependencies:
-  ats_flutter: ^0.1.0
+  ats_flutter: ^0.2.0
 ```
 
 ```bash
 flutter pub get
-dart run ats_flutter init
 ```
-
-The `init` command creates:
-- `.ats/flow_graph.json` — Your knowledge graph
-- `lib/generated/ats/ats_generated.g.dart` — Compiled map for O(1) lookups
 
 ---
 
@@ -70,119 +87,66 @@ class PaymentService {
 }
 ```
 
-### 3. Define flows in flow_graph.json
+### 3. Control flows via AI or Dashboard
 
-```json
-{
-  "ats_version": "4.0.0",
-  "project": "my_app",
-  "flows": {
-    "PAYMENT_FLOW": {
-      "description": "Checkout and payment processing",
-      "active": false,
-      "classes": {
-        "PaymentService": {
-          "methods": ["processPayment", "refund"],
-          "last_verified": "2026-04-16"
-        }
-      }
-    }
-  }
-}
+AI agents use MCP tools to toggle flows:
+```
+ats_activate({ flow: "PAYMENT_FLOW" })   → enables logging + auto-syncs .g.dart
+ats_silence({ flow: "PAYMENT_FLOW" })    → disables logging + auto-syncs .g.dart
 ```
 
-### 4. Activate when debugging
+Or toggle via the Web Dashboard at `http://localhost:4567`.
 
-```bash
-dart run ats_flutter activate PAYMENT_FLOW
-# → Flow activated. Hot Restart (Shift+R) to see logs.
-```
+### 4. Read structured logs
 
-Console output:
 ```
 [ATS][PAYMENT_FLOW][#001][d0] CheckoutBloc.onCheckout | {"cart_id": "abc"}
 [ATS][PAYMENT_FLOW][#002][d1] PaymentService.processPayment | {"amount": 99}
 [ATS][PAYMENT_FLOW][#003][d2] StripeGateway.charge | {"status": "ok"}
 ```
 
-### 5. Silence when done
-
-```bash
-dart run ats_flutter silence PAYMENT_FLOW
-# → Code stays clean. No logs to remove. Ever.
-```
-
----
-
-## CLI Commands
-
-| Command | Description |
-|---|---|
-| `dart run ats_flutter init` | Set up ATS in your Flutter project |
-| `dart run ats_flutter sync` | Compile `flow_graph.json` → generated Dart code |
-| `dart run ats_flutter activate <FLOW>` | Enable logging for a flow + auto-sync |
-| `dart run ats_flutter silence <FLOW>` | Disable logging for a flow + auto-sync |
-| `dart run ats_flutter graph` | Export flow dependencies as Mermaid diagram |
-
----
-
-## V4 Log Format
-
-```
-[ATS][FLOW_NAME][#SEQ][dDEPTH] Class.method | {optional_data}
-```
-
 | Token | Purpose | Example |
 |---|---|---|
-| `FLOW_NAME` | Which business flow is being traced | `PAYMENT_FLOW` |
-| `#SEQ` | Global execution order — AI reads which ran first | `#003` |
-| `dDEPTH` | Call stack depth — AI infers who called whom | `d2` (2 levels deep) |
-| `Class.method` | Exact source code location | `StripeGateway.charge` |
-| `{data}` | Optional JSON payload for debugging | `{"status": "ok"}` |
-
-**Why this matters:** Sequence + Depth together let AI reconstruct the full call tree from flat console output. No breakpoints, no step-debugging, no source-level tracing needed.
+| `FLOW_NAME` | Which business flow | `PAYMENT_FLOW` |
+| `#SEQ` | Execution order | `#003` |
+| `dDEPTH` | Call stack depth | `d2` |
+| `Class.method` | Source location | `StripeGateway.charge` |
+| `{data}` | Optional JSON payload | `{"status": "ok"}` |
 
 ---
 
-## How It Works Under the Hood
+## API Reference
 
-### CodeGen Architecture
+### `ATS.trace(className, methodName, {data})`
 
-ATS does **not** bundle JSON into your APK. Instead:
-
-1. `ats sync` compiles `flow_graph.json` → `ats_generated.g.dart` (pure `const Map`)
-2. `AtsGenerated.init()` loads the map at startup — O(1), synchronous
-3. `ATS.trace()` does a map lookup:
-   - Method belongs to active flow → print structured log
-   - Method not active → **return immediately** (no-op)
-4. Hot Restart reloads the generated file → changes take effect instantly
+The core tracing function. AI agents add this to every method once — it is **permanent** and **never removed**.
 
 ```dart
-// AUTO-GENERATED BY ATS CLI — DO NOT EDIT
-import 'package:ats_flutter/ats_flutter.dart';
-
-const _kMethodMap = <String, List<String>>{
-  'PaymentService.processPayment': ['PAYMENT_FLOW'],
-  'PaymentService.refund': ['PAYMENT_FLOW'],
-};
-
-const _kActiveFlows = <String>['PAYMENT_FLOW'];
-
-abstract class AtsGenerated {
-  static void init() {
-    ATS.internalInit(_kMethodMap, _kActiveFlows);
-  }
-}
+ATS.trace('PaymentService', 'processPayment', data: {'amount': 99});
 ```
 
-### Zero Production Overhead
+**Behavior:**
+- Release mode → returns immediately (zero cost)
+- Not initialized → returns immediately
+- Method muted → returns immediately
+- Method not in active flow → returns immediately
+- Method in active flow → prints structured log
 
-```dart
-static void trace(String className, String method, {dynamic data}) {
-  if (kReleaseMode) return;  // ← First line. Zero cost in production.
-  // ... rest only runs in debug/profile mode
-}
-```
+### `ATS.internalInit(methodMap, activeFlows, [mutedMethods])`
+
+Called by `AtsGenerated.init()` from the generated code. **Do not call directly.**
+
+### `ATS.isActive(flowName)` → `bool`
+
+Check if a specific flow is currently active.
+
+### `ATS.activeFlows` → `List<String>`
+
+Get all currently active flow names.
+
+### `ATS.isInitialized` → `bool`
+
+Whether ATS has been initialized.
 
 ---
 
@@ -190,13 +154,43 @@ static void trace(String className, String method, {dynamic data}) {
 
 ```
 lib/
-├── ats_flutter.dart              # Public API barrel file
+├── ats_flutter.dart              # Public API — exports ATS class
 └── src/
-    ├── ats_core.dart             # ATS.trace() — sequence tracking, depth inference
-    ├── flow_registry.dart        # O(1) method → flow lookup table
-    ├── log_writer.dart           # File-based logging to .ats/logs/ (JSONL)
-    └── cli/
-        └── runner.dart           # CLI: init, sync, activate, silence, graph
+    ├── ats_core.dart             # ATS.trace() + sequence + depth + muting
+    ├── flow_registry.dart        # O(1) method→flow hash map
+    └── log_writer.dart           # File-based JSONL logging to .ats/logs/
+```
+
+---
+
+## How CodeGen Works (V5)
+
+The **MCP Server** (not this package) handles code generation:
+
+1. AI calls `ats_activate("PAYMENT_FLOW")` via MCP
+2. MCP Server updates `flow_graph.json`
+3. MCP Server auto-detects `pubspec.yaml` → generates `ats_generated.g.dart`
+4. Developer does Hot Restart → new generated code takes effect
+
+```dart
+// AUTO-GENERATED BY ATS MCP Server — DO NOT EDIT
+import 'package:ats_flutter/ats_flutter.dart';
+
+const _kMethodMap = <String, List<String>>{
+  'PaymentService.processPayment': ['PAYMENT_FLOW'],
+  'PaymentService.refund': ['PAYMENT_FLOW'],
+};
+
+const _kMutedMethods = <String>{};
+
+const _kActiveFlows = <String>['PAYMENT_FLOW'];
+
+abstract class AtsGenerated {
+  static void init() {
+    ATS.resetSequence();
+    ATS.internalInit(_kMethodMap, _kActiveFlows, _kMutedMethods);
+  }
+}
 ```
 
 ---
@@ -205,7 +199,6 @@ lib/
 
 ```bash
 flutter test
-# → 7/7 tests pass
 ```
 
 Tests cover:
@@ -213,6 +206,7 @@ Tests cover:
 - Single and multi-flow method lookups
 - Unknown class/method handling (O(1) miss)
 - Active/inactive flow detection
+- Muted method suppression
 
 ---
 
@@ -220,19 +214,20 @@ Tests cover:
 
 | Tool | How |
 |---|---|
-| **MCP Server** | AI calls `ats_instrument` to auto-add traces, `ats_activate` to toggle flows |
-| **Gemini / Claude / Cursor** | Skills teach agents the ATS workflow automatically |
+| **MCP Server** | AI calls `ats_instrument` to auto-add traces, `ats_activate` to toggle |
+| **Claude Plugin** | `/plugin install ats-protocol` — auto-registers MCP + skills + hooks |
+| **Gemini / Cursor / Windsurf** | Configure MCP server in settings |
+| **Web Dashboard** | D3.js interactive DAG at `localhost:4567` |
 | **CI/CD** | `ats_validate` in CI catches stale methods and broken edges |
-| **Web Visualization** | D3.js interactive DAG at `localhost:4567` |
 
 ---
 
 ## Related
 
 - [ATS Protocol](../../README.md) — Protocol overview and monorepo
-- [MCP Server](../ats-mcp-server/README.md) — 7 AI agent tools
+- [MCP Server](../ats-mcp-server/README.md) — 8 AI agent tools + CLI + CodeGen
+- [SDK Guide](../../docs/sdk-guide.md) — Build ATS for a new language
 - [Setup Guide](../../docs/setup.md) — Full installation walkthrough
-- [Workflow Guide](../../docs/flow.md) — Day-to-day developer + AI workflow
 
 ## License
 
