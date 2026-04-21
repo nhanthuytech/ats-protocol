@@ -221,7 +221,8 @@ function parseTS(content: string): ParseResult {
   let alreadyHad = 0;
   let currentClass: string | null = null;
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const trimmed = line.trim();
 
     const classMatch = trimmed.match(/^(?:export\s+)?class\s+(\w+)/);
@@ -229,7 +230,7 @@ function parseTS(content: string): ParseResult {
 
     if (currentClass) {
       const methodMatch = trimmed.match(
-        /^(?:async\s+)?(\w+)\s*\([^)]*\)\s*(?::\s*[\w<>[\]|]+)?\s*{/,
+        /^(?:async\s+)?(\w+)\s*\([^)]*\)\s*(?::\s*[\w<>\[\]|]+)?\s*{/,
       );
       if (
         methodMatch &&
@@ -237,7 +238,14 @@ function parseTS(content: string): ParseResult {
       ) {
         methods.push(`${currentClass}.${methodMatch[1]}`);
 
-        // Check if next line already has console.log ATS
+        // Check if next line already has ATS trace — skip if so
+        const nextLine = (i + 1 < lines.length) ? lines[i + 1].trim() : '';
+        if (nextLine.includes("console.log('[ATS]")) {
+          alreadyHad++;
+          out.push(line);
+          continue;
+        }
+
         out.push(line);
         const indent = (line.match(/^(\s*)/)?.[1] ?? '') + '  ';
         out.push(
@@ -265,16 +273,26 @@ function parsePython(content: string): ParseResult {
   let alreadyHad = 0;
   let currentClass: string | null = null;
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const trimmed = line.trim();
 
     const classMatch = trimmed.match(/^class\s+(\w+)/);
     if (classMatch) currentClass = classMatch[1];
 
     if (currentClass) {
-      const defMatch = trimmed.match(/^def\s+(\w+)\s*\(/);
+      const defMatch = trimmed.match(/^(?:async\s+)?def\s+(\w+)\s*\(/);
       if (defMatch && !defMatch[1].startsWith('_')) {
         methods.push(`${currentClass}.${defMatch[1]}`);
+
+        // Check if next line already has ATS trace — skip if so
+        const nextLine = (i + 1 < lines.length) ? lines[i + 1].trim() : '';
+        if (nextLine.includes('print(f"[ATS]')) {
+          alreadyHad++;
+          out.push(line);
+          continue;
+        }
+
         out.push(line);
         const indent = (line.match(/^(\s*)/)?.[1] ?? '') + '    ';
         out.push(`${indent}print(f"[ATS][${currentClass}.${defMatch[1]}]")`);
@@ -283,7 +301,7 @@ function parsePython(content: string): ParseResult {
       }
     }
 
-    if (trimmed.includes("print(f\"[ATS]")) alreadyHad++;
+    if (trimmed.includes('print(f"[ATS]')) alreadyHad++;
     out.push(line);
   }
 

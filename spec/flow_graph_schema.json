@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/nhanthuytech/ats-protocol/spec/flow_graph_schema.json",
-  "title": "ATS Flow Graph V4",
+  "title": "ATS Flow Graph V6",
   "description": "Schema for flow_graph.json — the DAG-based knowledge graph used by ATS Protocol to map business logic flows to code.",
   "type": "object",
   "required": ["ats_version", "project", "flows"],
@@ -9,7 +9,7 @@
     "ats_version": {
       "type": "string",
       "description": "ATS protocol version. Follows semver.",
-      "example": "4.0.0"
+      "example": "6.0.0"
     },
     "project": {
       "type": "string",
@@ -20,6 +20,22 @@
       "type": "string",
       "format": "date-time",
       "description": "ISO 8601 timestamp of the last update. AI updates this when modifying the graph."
+    },
+    "global_classes": {
+      "type": "object",
+      "description": "Shared classes that are auto-included when ANY flow is active. Use for cross-cutting services like AuthService, AnalyticsService, DataService. Declared once, traced across all flows.",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "V3 format: list of method names."
+          },
+          {
+            "$ref": "#/definitions/ClassEntry"
+          }
+        ]
+      }
     },
     "flows": {
       "type": "object",
@@ -50,6 +66,12 @@
           "description": "Whether ATS.trace() logs are enabled for this flow.",
           "default": false
         },
+        "priority": {
+          "type": "string",
+          "enum": ["high", "normal", "low"],
+          "default": "normal",
+          "description": "Flow priority for log filtering. 'high' = always trace when active, 'normal' = default, 'low' = only trace when ATS_LOG_LEVEL=low."
+        },
         "depends_on": {
           "type": "array",
           "items": { "type": "string" },
@@ -67,7 +89,7 @@
         },
         "classes": {
           "type": "object",
-          "description": "Maps class names to method info. Supports both V3 array format and V4 object format.",
+          "description": "Maps class names to method info. Supports both V3 array format and V4+ object format.",
           "additionalProperties": {
             "oneOf": [
               {
@@ -109,6 +131,11 @@
           "items": { "type": "string" },
           "description": "List of method names that belong to this flow."
         },
+        "muted": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Methods that are suppressed from logging. trace() calls remain in code but produce no output. Must be a subset of 'methods'."
+        },
         "needs_verify": {
           "type": "boolean",
           "description": "If true, AI should verify source code matches graph before trusting it.",
@@ -137,6 +164,15 @@
           "type": "string",
           "enum": ["calls", "delegates", "emits", "navigates"],
           "description": "Relationship type between methods."
+        },
+        "trigger": {
+          "type": "string",
+          "enum": ["user_tap", "user_input", "api_response", "bloc_event", "lifecycle", "timer", "system"],
+          "description": "What triggers this edge. Helps AI understand causality."
+        },
+        "state_impact": {
+          "type": "string",
+          "description": "Name of the state variable affected by this call. Helps AI understand side effects during debugging."
         },
         "condition": {
           "type": "string",

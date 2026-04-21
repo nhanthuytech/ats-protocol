@@ -10,7 +10,7 @@ import 'package:flutter/foundation.dart';
 /// and natively imported in `main.dart`, achieving true O(1) memory mapping.
 class FlowRegistry {
   final Map<String, List<String>> _activeMethodsMap;
-  final List<String> _activeFlows;
+  final Set<String> _activeFlows;
 
   FlowRegistry._(this._activeMethodsMap, this._activeFlows);
 
@@ -18,7 +18,7 @@ class FlowRegistry {
   factory FlowRegistry.fromNative(
       Map<String, List<String>> staticMap, List<String> activeFlows) {
     // We strictly use the provided collections since they are generated natively.
-    final registry = FlowRegistry._(staticMap, activeFlows);
+    final registry = FlowRegistry._(staticMap, activeFlows.toSet());
     debugPrint('[ATS] Registry initialized via CodeGen.');
     _logActive(registry);
     return registry;
@@ -26,14 +26,14 @@ class FlowRegistry {
 
   /// Build a registry directly from test stubs.
   factory FlowRegistry.fromMock(String mapString, String flowsString) {
-    final registry = FlowRegistry._({}, []);
+    final registry = FlowRegistry._({}, {});
     registry._parse(mapString, flowsString);
     return registry;
   }
 
   /// Load the flow mapping. O(1) inverted index generation.
   static Future<FlowRegistry> load({String? customPath}) async {
-    final registry = FlowRegistry._({}, []);
+    final registry = FlowRegistry._({}, {});
 
     // ── Strategy 1: dart-define (works on ALL platforms, including mobile) ──
     const inlineMap =
@@ -109,7 +109,7 @@ class FlowRegistry {
   /// Returns a debug-friendly summary.
   Map<String, dynamic> toDebugMap() => {
         'mapped_methods': _activeMethodsMap.length,
-        'active_flows': _activeFlows,
+        'active_flows': _activeFlows.toList(),
         'mapping_keys': _activeMethodsMap.keys.toList(),
       };
 }

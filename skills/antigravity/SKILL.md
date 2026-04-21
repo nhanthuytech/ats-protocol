@@ -1,9 +1,9 @@
 ---
 name: ats-flutter
-description: ATS Protocol V5 workflow for Flutter projects. Activates when working in a Flutter project that has `.ats/flow_graph.json`. Calls ats_init via MCP to get full protocol instructions — no manual workflow needed.
+description: ATS Protocol V6 workflow for Flutter projects. Activates when working in a Flutter project that has `.ats/flow_graph.json`. Calls ats_init via MCP to get full protocol instructions — no manual workflow needed.
 ---
 
-# ATS Protocol V5 — Flutter Skill
+# ATS Protocol V6 — Flutter Skill
 
 If `.ats/flow_graph.json` exists in this project:
 

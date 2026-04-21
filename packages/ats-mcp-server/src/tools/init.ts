@@ -15,6 +15,13 @@ export function initTool(graph: FlowGraph) {
     .filter(([, f]) => f.active)
     .map(([n]) => n);
 
+  // Global classes summary
+  const globalClasses = data.global_classes ?? {};
+  let globalMethodCount = 0;
+  for (const cv of Object.values(globalClasses)) {
+    globalMethodCount += FlowGraph.methodsFromClass(cv).length;
+  }
+
   const flowOverview = Object.entries(flows).map(([name, flow]) => {
     let methodCount = 0;
     for (const cv of Object.values(flow.classes ?? {})) {
@@ -23,6 +30,7 @@ export function initTool(graph: FlowGraph) {
     return {
       name,
       active: flow.active ?? false,
+      priority: flow.priority ?? 'normal',
       depends_on: flow.depends_on ?? [],
       class_count: Object.keys(flow.classes ?? {}).length,
       method_count: methodCount,
@@ -37,7 +45,7 @@ export function initTool(graph: FlowGraph) {
   return {
     // ── Compressed Protocol Instructions ──────────────────────────────────
     protocol: {
-      version: '5.0.0',
+      version: '6.0.0',
       core_rules: [
         'ATS.trace() is PERMANENT — add to every method once, NEVER remove.',
         'Control logging via flow_graph.json only — toggle "active", never edit code.',
@@ -66,12 +74,16 @@ export function initTool(graph: FlowGraph) {
       sensitive_data: "Redact sensitive fields: { email: user.email, password: '***' }",
       session_limit: 'Keep max 5 sessions per flow — remove oldest when adding 6th.',
       multi_flow_classes: 'A class can appear in multiple flows — list only the methods relevant to each flow.',
+      global_classes: 'Use global_classes for shared services (AuthService, AnalyticsService, DataService). Declared once at top-level, auto-traced when any flow is active.',
+      priority: 'Set flow priority (high/normal/low) to control noise. High-priority flows always trace, low-priority only when explicitly requested.',
     },
 
     // ── Graph Overview ────────────────────────────────────────────────────
     graph: {
       project: data.project ?? 'unknown',
       total_flows: flowOverview.length,
+      global_class_count: Object.keys(globalClasses).length,
+      global_method_count: globalMethodCount,
       edge_count: (data.edges ?? []).length,
       flows: flowOverview,
       active_flows: activeFlows,

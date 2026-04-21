@@ -1,6 +1,6 @@
 name: ats_flutter
 description: ATS Protocol Runtime SDK for Flutter — AI-driven flow-based telemetry. Provides ATS.trace() for structured, switchable debug logging with zero production overhead.
-version: 0.2.0
+version: 0.3.0
 homepage: https://github.com/nhanthuytech/ats-protocol
 repository: https://github.com/nhanthuytech/ats-protocol/tree/main/packages/ats_flutter
 issue_tracker: https://github.com/nhanthuytech/ats-protocol/issues

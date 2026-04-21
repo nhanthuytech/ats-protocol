@@ -100,25 +100,33 @@ function parseConsoleLog(text: string): LogEntry[] {
 function parseLogFiles(logDir: string): LogEntry[] {
   const entries: LogEntry[] = [];
 
-  for (const file of fs.readdirSync(logDir)) {
-    if (!file.endsWith('.jsonl')) continue;
-    const lines = fs.readFileSync(path.join(logDir, file), 'utf-8').split('\n');
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const entry = JSON.parse(line);
-        entries.push({
-          flow: entry.flow ?? '',
-          seq: entry.seq ?? 0,
-          depth: entry.depth ?? 0,
-          method: `${entry.class ?? ''}.${entry.method ?? ''}`,
-          data: entry.data ? JSON.stringify(entry.data) : undefined,
-          timestamp: entry.timestamp ?? '',
-        });
-      } catch { /* skip invalid lines */ }
+  function scanDir(dir: string) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        // Recurse into flow subdirectories (e.g., logs/PAYMENT_FLOW/)
+        scanDir(fullPath);
+      } else if (entry.name.endsWith('.jsonl')) {
+        const lines = fs.readFileSync(fullPath, 'utf-8').split('\n');
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const parsed = JSON.parse(line);
+            entries.push({
+              flow: parsed.flow ?? '',
+              seq: parsed.seq ?? 0,
+              depth: parsed.depth ?? 0,
+              method: `${parsed.class ?? ''}.${parsed.method ?? ''}`,
+              data: parsed.data ? JSON.stringify(parsed.data) : undefined,
+              timestamp: parsed.ts ?? '',
+            });
+          } catch { /* skip invalid lines */ }
+        }
+      }
     }
   }
 
+  scanDir(logDir);
   return entries;
 }
 

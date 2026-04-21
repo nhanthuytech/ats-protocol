@@ -14,17 +14,15 @@ ats-protocol/
 ├── docs/                          # Guides and references
 │   ├── flow.md                    # Developer + AI agent workflow
 │   ├── setup.md                   # Step-by-step setup guide
-│   ├── migration_v2_to_v3.md      # V2 → V3 migration
-│   └── migration_v3_to_v4.md      # V3 → V4 migration (DAG)
+│   └── architecture.md            # Internal architecture deep dive
 ├── templates/                     # AI agent template files
-│   ├── rules/                     # Lightweight rules (~500 tokens per session)
-│   └── workflows/                 # Step-by-step guides (/ats-debug, etc.)
+│   └── rules/                     # Lightweight rules (~500 tokens per session)
 ├── skills/                        # Full AI agent skill files
 │   ├── antigravity/SKILL.md       # Gemini (Antigravity) agent
 │   └── claude/CLAUDE.md           # Claude agent
 ├── packages/
-│   ├── ats_flutter/               # Dart/Flutter SDK + CLI
-│   └── ats-mcp-server/            # TypeScript MCP Server (universal)
+│   ├── ats_flutter/               # Dart/Flutter Runtime SDK
+│   └── ats-mcp-server/            # TypeScript MCP Server (10 tools)
 ├── .github/workflows/ci.yml       # CI: Flutter tests + TypeScript build
 ├── CONTRIBUTING.md                # ← You are here
 ├── LICENSE                        # MIT

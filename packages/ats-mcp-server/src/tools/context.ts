@@ -31,9 +31,12 @@ export function contextTool(graph: FlowGraph, args: Record<string, unknown>) {
   // Build context for each flow
   const flowContexts = ordered.map(name => {
     const flow = allFlows[name];
-    const classes: Record<string, string[]> = {};
+    const classes: Record<string, { methods: string[]; muted: string[] }> = {};
     for (const [cn, cv] of Object.entries(flow.classes)) {
-      classes[cn] = FlowGraph.methodsFromClass(cv);
+      const methods = FlowGraph.methodsFromClass(cv);
+      const muted = (typeof cv === 'object' && cv !== null && !Array.isArray(cv) && 'muted' in cv)
+        ? ((cv as { muted?: string[] }).muted ?? []) : [];
+      classes[cn] = { methods, muted };
     }
 
     const children = Object.entries(allFlows)
@@ -44,6 +47,7 @@ export function contextTool(graph: FlowGraph, args: Record<string, unknown>) {
       name,
       description: flow.description ?? '',
       active: flow.active ?? false,
+      priority: flow.priority ?? 'normal',
       depends_on: flow.depends_on ?? [],
       classes,
       sub_flows: children,
@@ -52,17 +56,17 @@ export function contextTool(graph: FlowGraph, args: Record<string, unknown>) {
     };
   });
 
-  // Collect relevant edges
-  const relevantKeys = new Set<string>();
-  for (const ctx of flowContexts) {
-    for (const [cn, methods] of Object.entries(ctx.classes)) {
-      for (const m of methods) relevantKeys.add(`${cn}.${m}`);
-    }
-  }
+  // Use edge index for O(1) lookup instead of O(n) filter
+  const relevantEdges = graph.edgesForFlow(flowName);
 
-  const relevantEdges = graph.edges.filter(e =>
-    relevantKeys.has(e.from) || relevantKeys.has(e.to)
-  );
+  // Global classes summary (condensed — just names + method counts)
+  const data = graph.read();
+  const globalSummary = data.global_classes
+    ? Object.entries(data.global_classes).map(([cn, cv]) => ({
+        class: cn,
+        method_count: FlowGraph.methodsFromClass(cv).length,
+      }))
+    : [];
 
   const hasActiveFlow = flowContexts.some(f => f.active);
   const targetActive = allFlows[flowName]?.active ?? false;
@@ -70,6 +74,7 @@ export function contextTool(graph: FlowGraph, args: Record<string, unknown>) {
   return {
     target_flow: flowName,
     context_flows: flowContexts,
+    global_classes: globalSummary,
     edges: relevantEdges,
     traversal_depth: maxDepth,
     next_action: targetActive

@@ -25,10 +25,21 @@ class ATS {
   static FlowRegistry? _registry;
   static LogWriter? _writer;
   static Set<String> _mutedMethods = {};
+  static Map<String, String> _flowPriorities = {};
+  static String _minPriority = 'normal';
   static bool _initialized = false;
 
   // Private constructor — ATS is a static-only class.
   ATS._();
+
+  // ─────────────────────────────────────────────────
+  // Priority ranking
+  // ─────────────────────────────────────────────────
+
+  static const _priorityRanks = {'low': 0, 'normal': 1, 'high': 2};
+
+  static int _priorityRank(String priority) =>
+      _priorityRanks[priority] ?? 1;
 
   // ─────────────────────────────────────────────────
   // Initialization
@@ -42,18 +53,37 @@ class ATS {
     Map<String, List<String>> staticMap,
     List<String> activeFlows, [
     Set<String>? mutedMethods,
+    Map<String, String>? flowPriorities,
   ]) async {
     if (kReleaseMode) return;
     if (_initialized) return;
 
     _registry = FlowRegistry.fromNative(staticMap, activeFlows);
     _mutedMethods = mutedMethods ?? {};
+    _flowPriorities = flowPriorities ?? {};
     _writer = await LogWriter.create();
     _initialized = true;
 
     if (_mutedMethods.isNotEmpty) {
       debugPrint('[ATS] Muted methods: ${_mutedMethods.length}');
     }
+    if (_flowPriorities.isNotEmpty) {
+      final highCount = _flowPriorities.values.where((p) => p == 'high').length;
+      final lowCount = _flowPriorities.values.where((p) => p == 'low').length;
+      debugPrint('[ATS] Flow priorities: $highCount high, $lowCount low');
+    }
+  }
+
+  /// Set the minimum priority level for logging.
+  /// Methods in flows below this priority will be silenced.
+  ///
+  /// ```dart
+  /// ATS.setMinPriority('high'); // Only log high-priority flows
+  /// ```
+  static void setMinPriority(String priority) {
+    if (kReleaseMode) return;
+    _minPriority = priority;
+    debugPrint('[ATS] Min priority set to: $priority');
   }
 
   /// [DEPRECATED] — ATS V3 uses Dart CodeGen instead of dart-defines.
@@ -80,6 +110,7 @@ class ATS {
   /// - Running in release mode
   /// - ATS is not initialized
   /// - The method is not registered in any active flow
+  /// - The method's flow priority is below the minimum threshold
   ///
   /// Log format: `[ATS][FLOW_NAME][#SEQ][dDEPTH] Class.method | {data}`
   ///
@@ -112,6 +143,10 @@ class ATS {
     final seqStr = seq.toString().padLeft(3, '0');
 
     for (final flow in flows) {
+      // Priority check — skip flows below minimum priority
+      final priority = _flowPriorities[flow] ?? 'normal';
+      if (_priorityRank(priority) < _priorityRank(_minPriority)) continue;
+
       // Log to console — AI reads this from IDE run output
       debugPrint('[ATS][$flow][#$seqStr][d$depth] $className.$methodName'
           '${data != null ? ' | $data' : ''}');
@@ -121,6 +156,8 @@ class ATS {
         flow: flow,
         className: className,
         methodName: methodName,
+        seq: seq,
+        depth: depth,
         data: data,
       );
     }

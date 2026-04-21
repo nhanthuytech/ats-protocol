@@ -1,4 +1,4 @@
-# ATS Protocol — Setup Guide
+# ATS Protocol — Setup Guide (V6)
 
 This guide walks you through setting up ATS in your project, from zero to a fully connected AI-augmented debugging environment.
 
@@ -19,12 +19,10 @@ This guide walks you through setting up ATS in your project, from zero to a full
 ```bash
 # Add ATS to your Flutter project
 flutter pub add ats_flutter
-
-# Initialize ATS — creates flow graph + generated code
-dart run ats_flutter init
 ```
 
-This creates:
+Then create the ATS directory structure manually or let AI do it via `ats_init`:
+
 ```
 your_project/
 ├── .ats/
@@ -77,24 +75,24 @@ Then map to a flow in `.ats/flow_graph.json`:
 
 ```json
 {
+  "ats_version": "6.0.0",
+  "project": "my_app",
+  "global_classes": {},
   "flows": {
     "CHECKOUT_FLOW": {
       "description": "Cart to payment completion",
       "active": false,
+      "priority": "high",
       "classes": {
         "CartService": {
           "methods": ["checkout", "applyVoucher"],
-          "last_verified": "2026-04-16"
+          "last_verified": "2026-04-20"
         }
       }
     }
-  }
+  },
+  "edges": []
 }
-```
-
-Run sync to update generated code:
-```bash
-dart run ats_flutter sync
 ```
 
 > **Tip:** Your AI agent handles all of this automatically when it has the ATS skill loaded. You rarely need to edit `flow_graph.json` by hand.
@@ -103,7 +101,7 @@ dart run ats_flutter sync
 
 ## Step 4: Set up MCP Server (Recommended)
 
-The MCP Server gives AI agents 8 specialized tools. With V5, `ats_init` delivers full protocol instructions on-demand — no heavy config files needed.
+The MCP Server gives AI agents 10 specialized tools. `ats_init` delivers full protocol instructions on-demand — no heavy config files needed.
 
 ### Build
 
@@ -179,18 +177,20 @@ Ask your AI agent:
 
 The agent should call `ats_init` and receive full protocol instructions + graph overview in one call.
 
-### Available Tools (8)
+### Available Tools (10)
 
 | Tool | What AI uses it for |
 |---|---|
 | `ats_init` | **Call first** — gets protocol instructions + graph overview |
-| `ats_context` | Understanding a flow — classes, methods, edges, history |
+| `ats_context` | Understanding a flow — classes, methods, edges, global_classes, history |
 | `ats_activate` | Turning on logging for a flow |
 | `ats_silence` | Turning off logging after debugging |
-| `ats_validate` | Checking graph integrity — cycles, stale methods |
+| `ats_validate` | Checking graph integrity — cycles, stale methods, invalid muted/priority |
 | `ats_impact` | Analyzing blast radius before modifying a method |
 | `ats_instrument` | Auto-adding `ATS.trace()` to every method in a file |
-| `ats_analyze` | Parsing console logs to discover call chains |
+| `ats_analyze` | Parsing console/file logs to discover call chains |
+| `ats_mute` | **V6:** Muting/unmuting specific methods without editing JSON |
+| `ats_rank` | **V6:** PageRank importance, bottleneck detection, community analysis |
 
 [Full tool documentation →](../packages/ats-mcp-server/README.md)
 
@@ -199,7 +199,6 @@ The agent should call `ats_init` and receive full protocol instructions + graph 
 ## Step 5: Install AI Agent Hook (Recommended)
 
 Add a minimal 4-line hook so AI agents automatically know to call `ats_init` at task start.
-With V5, you do **not** need to install workflow files or copy large skill files.
 
 ### For Claude Code
 
@@ -207,7 +206,7 @@ With V5, you do **not** need to install workflow files or copy large skill files
 # In your Flutter project root
 mkdir -p .claude
 cat > .claude/CLAUDE.md << 'EOF'
-# ATS Protocol V5
+# ATS Protocol V6
 If `.ats/flow_graph.json` exists in this project:
 1. Call `ats_init` before starting any task.
 2. Follow all instructions returned by the tool exactly.
@@ -277,8 +276,8 @@ ATS generates some files that should be committed, and some that shouldn't:
 ### No logs appearing after activate
 
 1. Make sure you **Hot Restarted** (not just Hot Reloaded) — `AtsGenerated.init()` uses `const` values that need a restart.
-2. Verify the flow is active: `dart run ats_flutter status`
-3. Check that your class/method names in `flow_graph.json` match the source code exactly.
+2. Check that your class/method names in `flow_graph.json` match the source code exactly.
+3. Run `ats_validate` to check for graph inconsistencies.
 
 ### MCP tools not showing in IDE
 
@@ -287,11 +286,11 @@ ATS generates some files that should be committed, and some that shouldn't:
 3. Use **absolute paths** in your MCP configuration
 4. Restart your IDE after changing MCP config
 
-### Generated file errors
+### Too much noise in logs
 
-```bash
-dart run ats_flutter sync    # Regenerate from flow_graph.json
-```
+1. Use `ats_mute` to silence noisy methods: `ats_mute({ className: "Logger", methodName: "verbose" })`
+2. Set flow `"priority": "low"` for non-critical flows
+3. Use `ATS.setMinPriority('high')` at runtime to only show high-priority flows
 
 ---
 
@@ -300,8 +299,7 @@ dart run ats_flutter sync    # Regenerate from flow_graph.json
 | Document | Description |
 |---|---|
 | [Developer + AI Workflow](flow.md) | Day-to-day workflow with detailed examples |
-| [Protocol Specification](../spec/protocol.md) | Schema, contracts, log format |
-| [MCP Server](../packages/ats-mcp-server/README.md) | 7 tools with full input/output examples |
-| [Flutter SDK](../packages/ats_flutter/README.md) | Dart API reference + CLI commands |
-| [Migration V3 → V4](migration_v3_to_v4.md) | Upgrade guide to DAG architecture |
+| [Protocol Specification](../spec/protocol.md) | V6 Schema, contracts, log format |
+| [MCP Server](../packages/ats-mcp-server/README.md) | 10 tools with full input/output examples |
+| [Flutter SDK](../packages/ats_flutter/README.md) | Dart API reference |
 | [Contributing](../CONTRIBUTING.md) | How to contribute |

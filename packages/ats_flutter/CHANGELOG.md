@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.3.0 — V6 Architecture (Scalability & Intelligence)
+
+### New Features
+- **Priority-based filtering** — Flows now support `priority: high | normal | low`. Use `ATS.setMinPriority()` to filter noisy flows at runtime.
+- **`global_classes` support** — Shared services declared once at top-level, auto-traced when any flow is active.
+- **`seq` and `depth` in JSONL logs** — LogWriter now writes complete trace data for offline analysis.
+
+### Bug Fixes
+- **Fixed:** LogWriter was not including `seq` and `depth` in JSONL log entries, breaking `ats_analyze` file-based parsing.
+- **Fixed:** Custom `unawaited()` replaced with `dart:async` standard import.
+- **Fixed:** `FlowRegistry._activeFlows` changed from `List` to `Set` for O(1) `isActive()` lookup.
+
+### API Changes
+- `ATS.internalInit()` now accepts optional `flowPriorities` parameter (4th argument).
+- `ATS.setMinPriority(String priority)` — new static method.
+- `LogWriter.writeAsync()` now requires `seq` and `depth` parameters.
+
+### What's Unchanged
+- `ATS.trace()` — same public API, same call signature.
+- `FlowRegistry` — same `fromNative()` constructor API.
+- Generated `ats_generated.g.dart` — backward compatible, now includes `_kFlowPriorities`.
+
+
 ## 0.2.0 — V5 Architecture (Runtime-Only)
 
 ### Breaking Changes

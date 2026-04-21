@@ -1,12 +1,13 @@
-# ATS Protocol — Core Rules
+# ATS Protocol V6 — Core Rules
 
-This project uses ATS (Agentic Telemetry Standard) V4 for structured logging and AI-driven flow management.
+This project uses ATS (Agentic Telemetry Standard) V6 for structured logging and AI-driven flow management.
 
 ## ALWAYS
-1. Read `.ats/flow_graph.json` at task start (scan flow names + `depends_on` first, read details for relevant flows only).
+1. Call `ats_init` via MCP before starting any task — it returns all protocol instructions.
 2. Add `ATS.trace('ClassName', 'methodName', data: ...)` to EVERY method when you first touch a class. Verify existing traces match actual names — fix if wrong.
 3. Update `flow_graph.json` after each task: add new methods, set `depends_on`, write session note (max 5 per flow).
-4. Use V4 class format: `"ClassName": { "methods": ["m1", "m2"], "last_verified": "YYYY-MM-DD" }`
+4. Use V4+ class format: `"ClassName": { "methods": ["m1", "m2"], "last_verified": "YYYY-MM-DD" }`
+5. Use `global_classes` for shared services (AuthService, AnalyticsService) — declare once, traced across all flows.
 
 ## NEVER
 - Use `print()` or `debugPrint()` — use `ATS.trace()`.
@@ -24,12 +25,10 @@ This project uses ATS (Agentic Telemetry Standard) V4 for structured logging and
 ```
 When `#005 d1` → `#006 d2`: method #005 called #006. Add discovered edges to `"edges"` array.
 
-## Commands
-- `ats activate FLOW` / `ats silence FLOW` — toggle logging
-- `ats sync` — compile after manual JSON edits
-- `ats graph` — export DAG as Mermaid
-
-## Workflows
-- Debugging a flow → follow `/ats-debug` workflow
-- Instrument existing feature → follow `/ats-instrument` workflow
-- Fix stale graph entries → follow `/ats-review` workflow
+## V6 Features
+- `global_classes` — shared services declared once at top-level
+- `priority` — flow-level: `high`, `normal`, `low`
+- `trigger` — edge-level: `user_tap`, `api_response`, `bloc_event`, etc.
+- `state_impact` — edge-level: name of state variable affected
+- `ats_mute` — mute/unmute methods via MCP tool
+- `ats_rank` — PageRank, bottleneck detection, community analysis

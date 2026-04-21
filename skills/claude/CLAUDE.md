@@ -1,4 +1,4 @@
-# ATS Protocol V5 — Claude Instructions
+# ATS Protocol V6 — Claude Instructions
 
 If `.ats/flow_graph.json` exists in this project:
 

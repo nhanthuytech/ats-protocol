@@ -1,6 +1,6 @@
-# ATS Protocol — Developer & AI Workflow (V4)
+# ATS Protocol — Developer & AI Workflow (V6)
 
-This document describes how ATS V4 changes the daily interaction between you (the developer) and your AI agent (Claude, Cursor, Gemini, or any MCP-compatible assistant).
+This document describes how ATS V6 changes the daily interaction between you (the developer) and your AI agent (Claude, Cursor, Gemini, or any MCP-compatible assistant).
 
 ---
 
@@ -17,7 +17,7 @@ This document describes how ATS V4 changes the daily interaction between you (th
 
 **Total cost per debug session: ~30,000 tokens. Context retained: zero.**
 
-### With ATS V4
+### With ATS V6
 
 1. AI calls `ats_context("CHECKOUT_FLOW")` → receives class list, edges, past sessions in **200 tokens**.
 2. `ats_activate("CHECKOUT_FLOW")` → structured logging enabled. One command.
@@ -60,17 +60,18 @@ AI maps the class to a flow in `.ats/flow_graph.json`:
 "CHECKOUT_FLOW": {
   "description": "Cart to payment completion",
   "active": false,
+  "priority": "high",
   "depends_on": ["PAYMENT_FLOW"],
   "classes": {
     "CartService": {
       "methods": ["checkout", "applyVoucher"],
-      "last_verified": "2026-04-16"
+      "last_verified": "2026-04-20"
     }
   }
 }
 ```
 
-> **How does AI know to do this?** Layer 1 (Rules) loads automatically every session — it teaches AI the 5 core principles in ~500 tokens. For detailed steps, AI invokes a workflow or MCP tool.
+> **How does AI know to do this?** At session start, AI calls `ats_init` via MCP — it receives all protocol rules and workflows in ~400 tokens. No heavy config files needed.
 
 **With MCP Server:** AI can call `ats_instrument({ file: "lib/services/cart_service.dart", flow: "CHECKOUT_FLOW" })` to add traces to every public method at once, and update the graph automatically.
 
@@ -80,15 +81,10 @@ AI maps the class to a flow in `.ats/flow_graph.json`:
 
 You discover a checkout bug. You tell AI: *"Checkout is broken — customer can't complete payment."*
 
-**Option A — AI uses CLI:**
-```bash
-dart run ats_flutter activate CHECKOUT_FLOW
-```
-
-**Option B — AI uses MCP (faster, fewer tokens):**
+AI uses MCP tools:
 ```
 AI calls: ats_context("CHECKOUT_FLOW")
-  → Receives: classes, edges, sessions, depends_on — topologically sorted
+  → Receives: classes, edges, sessions, depends_on, global_classes — topologically sorted
 
 AI calls: ats_activate("CHECKOUT_FLOW")
   → Flow enabled, generated code auto-synced
@@ -124,8 +120,8 @@ and also failed — but it shouldn't block payment.
 
 ```json
 "edges": [
-  { "from": "CheckoutBloc.onCheckoutStarted", "to": "CartService.checkout", "type": "calls" },
-  { "from": "CartService.checkout", "to": "PaymentService.processPayment", "type": "calls" },
+  { "from": "CheckoutBloc.onCheckoutStarted", "to": "CartService.checkout", "type": "calls", "trigger": "user_tap" },
+  { "from": "CartService.checkout", "to": "PaymentService.processPayment", "type": "calls", "state_impact": "paymentState" },
   { "from": "CheckoutBloc.onCheckoutStarted", "to": "VoucherService.validate", "type": "calls" }
 ]
 ```
@@ -138,20 +134,14 @@ and also failed — but it shouldn't block payment.
 
 ### Phase 4: Silence — Clean up automatically
 
-Bug fixed. AI runs:
-
-```bash
-dart run ats_flutter silence CHECKOUT_FLOW
-```
-
-And records what happened:
+Bug fixed. AI runs `ats_silence("CHECKOUT_FLOW")` and records what happened:
 
 ```json
 "CHECKOUT_FLOW": {
   "active": false,
   "sessions": [
     {
-      "date": "2026-04-16",
+      "date": "2026-04-20",
       "action": "debug",
       "note": "Payment failing: gateway returns text 'declined' instead of error code. Added fallback parser.",
       "resolved": true
@@ -170,18 +160,55 @@ You `git commit` the JSON → any developer (or AI) debugging this flow tomorrow
 
 ---
 
-## V4 vs V3: What Changed?
+## V6 Features
 
-| Aspect | V3 | V4 |
-|---|---|---|
-| **Starting a task** | AI reads entire flow_graph.json (~3,000 tokens) | AI calls `ats_context` for specific flow (~200 tokens) |
-| **Finding related classes** | AI searches JSON manually | Topological sort delivers dependencies in order |
-| **Log format** | `[ATS][FLOW] Class.method \| data` | `[ATS][FLOW][#SEQ][dDEPTH] Class.method \| data` |
-| **Understanding call chains** | AI guesses from source code | AI reads sequence + depth → exact chain reconstruction |
-| **Knowledge retention** | `known_issues` only | `known_issues` + `sessions` + `edges` + `depends_on` |
-| **Next session** | AI re-reads entire graph | AI reads graph + already knows edges → skips logging |
-| **Drift detection** | None | `needs_verify`, `last_verified`, `ats_validate` |
-| **Graph structure** | Flat list of flows | DAG with typed edges and dependency ordering |
+### Global Classes
+
+Shared services like `AuthService` and `AnalyticsService` don't need to be duplicated across flows:
+
+```json
+{
+  "global_classes": {
+    "AuthService": {
+      "methods": ["login", "logout", "refreshToken"],
+      "last_verified": "2026-04-20"
+    }
+  }
+}
+```
+
+When **any** flow is active, `AuthService` methods are automatically traced.
+
+### Priority Filtering
+
+Control noise when many flows are active:
+
+```json
+"ANALYTICS_FLOW": {
+  "priority": "low",
+  "active": true
+}
+```
+
+AI or developer calls `ATS.setMinPriority('high')` → only high-priority flows produce logs.
+
+### Rich Edges
+
+Edges now carry context about **what triggers them** and **what state they affect**:
+
+```json
+{ "from": "CheckoutBloc.onPaymentConfirmed", "to": "PaymentService.processPayment",
+  "type": "calls", "trigger": "user_tap", "state_impact": "paymentState" }
+```
+
+### Method Muting via MCP
+
+AI can directly mute noisy methods without editing JSON:
+
+```
+AI calls: ats_mute({ className: "Logger", methodName: "verbose" })
+→ Method muted across all flows. Auto-syncs generated code.
+```
 
 ---
 
@@ -193,7 +220,7 @@ ATS does **not** bundle JSON into your application binary. Instead:
 flow_graph.json  ──(ats sync)──▶  ats_generated.g.dart  ──(Hot Restart)──▶  Runtime map
 ```
 
-1. `ats sync` compiles JSON → pure Dart `const Map`
+1. MCP Server compiles JSON → pure Dart `const Map` (includes global_classes + priorities)
 2. `AtsGenerated.init()` loads map into memory — O(1), synchronous
 3. `ATS.trace()` does map lookup:
    - Active flow → structured log
@@ -201,38 +228,6 @@ flow_graph.json  ──(ats sync)──▶  ats_generated.g.dart  ──(Hot Res
 4. Hot Restart loads updated generated file → changes take effect instantly
 
 **Zero production overhead:** `ATS.trace()` checks `kReleaseMode` as its very first operation.
-
----
-
-## 3-Layer AI System
-
-```
-┌──────────────────────────────────────────────────┐
-│  Layer 1: RULES (always loaded, ~500 tokens)     │
-│  5 core principles:                              │
-│  • Read graph • Add trace • Activate • Silence   │
-│  • Record sessions                               │
-├──────────────────────────────────────────────────┤
-│  Layer 2: WORKFLOWS (loaded on demand)           │
-│  /ats-debug     → 8-step debug flow              │
-│  /ats-instrument → 7-step instrumentation guide  │
-│  /ats-review    → 6-step drift checking          │
-├──────────────────────────────────────────────────┤
-│  Layer 3: MCP SERVER (zero AI token cost)        │
-│  ats_context    → topo-sorted context            │
-│  ats_activate   → toggle flow + sync             │
-│  ats_validate   → detect graph corruption        │
-│  ats_impact     → blast radius analysis          │
-│  ats_instrument → auto-add traces to file        │
-│  ats_analyze    → parse logs, discover edges     │
-└──────────────────────────────────────────────────┘
-```
-
-**How they work together:**
-- **Every session** → Layer 1 ensures AI follows the protocol
-- **Debugging** → Layer 2 (`/ats-debug`) or Layer 3 (`ats_context` + `ats_activate`)
-- **Reviewing graph** → Layer 2 (`/ats-review`) or Layer 3 (`ats_validate`)
-- **New code** → Layer 2 (`/ats-instrument`) or Layer 3 (`ats_instrument`)
 
 ---
 
@@ -255,5 +250,5 @@ flow_graph.json  ──(ats sync)──▶  ats_generated.g.dart  ──(Hot Res
 
 - [Setup Guide](setup.md) — Step-by-step installation
 - [Protocol Specification](../spec/protocol.md) — Schema, contracts, log format
-- [MCP Server](../packages/ats-mcp-server/README.md) — 7 tools with examples
-- [Migration V3 → V4](migration_v3_to_v4.md) — Upgrade guide
+- [MCP Server](../packages/ats-mcp-server/README.md) — 10 tools with examples
+- [Migration V5 → V6](../planV6.md) — Upgrade guide

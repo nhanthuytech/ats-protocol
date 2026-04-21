@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'dart:async' show unawaited;
 import 'dart:convert';
 import 'dart:io';
 
@@ -10,7 +10,7 @@ import 'package:path_provider/path_provider.dart';
 /// Log location: {AppDocumentsDir}/.ats/logs/{FLOW_NAME}/{YYYY-MM-DD}.jsonl
 ///
 /// Format (one JSON object per line):
-/// {"ts":"...","flow":"PAYMENT_FLOW","class":"PaymentService","method":"processPayment","data":{...}}
+/// {"ts":"...","flow":"PAYMENT_FLOW","seq":7,"depth":2,"class":"PaymentService","method":"processPayment","data":{...}}
 ///
 /// To find logs on device/simulator:
 ///   iOS Simulator: ~/Library/Developer/CoreSimulator/Devices/.../Documents/.ats/logs/
@@ -41,6 +41,8 @@ class LogWriter {
     required String flow,
     required String className,
     required String methodName,
+    required int seq,
+    required int depth,
     dynamic data,
   }) {
     if (_logsDir == null) return;
@@ -49,6 +51,8 @@ class LogWriter {
       flow: flow,
       className: className,
       methodName: methodName,
+      seq: seq,
+      depth: depth,
       data: data,
     ));
   }
@@ -57,6 +61,8 @@ class LogWriter {
     required String flow,
     required String className,
     required String methodName,
+    required int seq,
+    required int depth,
     dynamic data,
   }) async {
     try {
@@ -68,6 +74,8 @@ class LogWriter {
       final entry = {
         'ts': DateTime.now().toIso8601String(),
         'flow': flow,
+        'seq': seq,
+        'depth': depth,
         'class': className,
         'method': methodName,
         'data': _sanitize(data),
@@ -97,6 +105,3 @@ class LogWriter {
   /// Returns the path where logs are stored (useful for AI to know where to look).
   String? get logsDirPath => _logsDirPath;
 }
-
-/// Extension to suppress unawaited future warnings without lint suppression.
-void unawaited(Future<void> future) {}

@@ -1,11 +1,11 @@
 ---
 name: ats-protocol
-description: Agentic Telemetry Standard — structured flow-based debugging for AI agents
+description: Agentic Telemetry Standard V6 — structured flow-based debugging for AI agents
 activation:
   fileExists: .ats/flow_graph.json
 ---
 
-# ATS Protocol
+# ATS Protocol V6
 
 When this project has `.ats/flow_graph.json`:
 

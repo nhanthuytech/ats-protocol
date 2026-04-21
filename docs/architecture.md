@@ -20,24 +20,25 @@ This document explains the internal architecture and design decisions of ATS. Re
 
 ## System Overview
 
-ATS has two layers in V5, each with a specific responsibility:
+ATS has two layers in V6, each with a specific responsibility:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │  AI Agent Hook (CLAUDE.md / SKILL.md)  —  ~30 tokens/session         │
 │  "If .ats exists, call ats_init before any task"                       │
 ├─────────────────────────────────────────────────────────────────────┤
-│  MCP Server (TypeScript)  —  8 tools                                  │
+│  MCP Server (TypeScript)  —  10 tools                                 │
 │  ┌──────────────────────┐    ┌─────────────────────────────────┐   │
-│  │ ats_init (V5 Skill)    │    │ Language SDK (Dart, TS, Python...)  │   │
-│  │ protocol + next_action │    │ trace() + CLI + codegen             │   │
-│  │ 7 workflow tools       │    │ Reads generated maps at runtime     │   │
+│  │ ats_init (V6 Skill)    │    │ Language SDK (Dart, TS, Python...)  │   │
+│  │ protocol + next_action │    │ trace() + codegen                   │   │
+│  │ 9 workflow tools       │    │ Reads generated maps at runtime     │   │
 │  └────────────┬─────────┘    └────────────────┬─────────────┘   │
 │             └───────────────┬─────────────────┘                    │
 │                           │                                           │
 │             ┌─────────┬───▼───────────┐                           │
-│             │  flow_graph.json (V5)        │                           │
-│             │  DAG: flows, edges, sessions │                           │
+│             │  flow_graph.json (V6)        │                           │
+│             │  DAG: global_classes, flows, │                           │
+│             │  edges, priority, triggers   │                           │
 │             └─────────────────────────────┘                           │
 └─────────────────────────────────────────────────────────────────────┘
 ```

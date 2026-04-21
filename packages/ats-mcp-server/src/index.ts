@@ -13,6 +13,8 @@ import { impactTool } from './tools/impact.js';
 import { instrumentTool } from './tools/instrument.js';
 import { analyzeTool } from './tools/analyze.js';
 import { initTool } from './tools/init.js';
+import { muteTool } from './tools/mute.js';
+import { rankTool } from './tools/rank.js';
 
 import { discoverGraphPaths } from './discover.js';
 
@@ -58,7 +60,7 @@ function resolveGraph(project?: string): FlowGraph | { error: string; available_
 
 const server = new McpServer({
   name: 'ats-mcp-server',
-  version: '5.0.0',
+  version: '6.0.0',
 });
 
 const projectParam = z.string().optional().describe(
@@ -68,7 +70,7 @@ const projectParam = z.string().optional().describe(
 // ── 0. ats_init ──
 server.tool(
   'ats_init',
-  'V5 SKILL ENTRY POINT — Call at task start. If multiple projects exist, returns the list for user selection.',
+  'V6 SKILL ENTRY POINT — Call at task start. Returns protocol rules, graph overview, and global_classes info.',
   { project: projectParam },
   async (args) => {
     const g = resolveGraph(args.project as string | undefined);
@@ -170,12 +172,46 @@ server.tool(
   },
 );
 
+// ── 8. ats_mute ──
+server.tool(
+  'ats_mute',
+  'Mute or unmute a specific method. Muted methods remain in graph but produce no log output.',
+  {
+    className: z.string().describe('Class name containing the method'),
+    methodName: z.string().describe('Method name to mute/unmute'),
+    mute: z.boolean().optional().describe('true to mute (default), false to unmute'),
+    project: projectParam,
+  },
+  async (args) => {
+    const g = resolveGraph(args.project as string | undefined);
+    if ('error' in g) return { content: [{ type: 'text', text: JSON.stringify(g, null, 2) }] };
+    return { content: [{ type: 'text', text: JSON.stringify(muteTool(g, args), null, 2) }] };
+  },
+);
+
+// ── 9. ats_rank ──
+server.tool(
+  'ats_rank',
+  'Analyze graph topology: PageRank importance, bottleneck detection, community detection, shortest path.',
+  {
+    action: z.enum(['rank', 'bottleneck', 'communities', 'path']).describe('Analysis type'),
+    from: z.string().optional().describe('For path: source method (Class.method)'),
+    to: z.string().optional().describe('For path: target method (Class.method)'),
+    project: projectParam,
+  },
+  async (args) => {
+    const g = resolveGraph(args.project as string | undefined);
+    if ('error' in g) return { content: [{ type: 'text', text: JSON.stringify(g, null, 2) }] };
+    return { content: [{ type: 'text', text: JSON.stringify(rankTool(g, args), null, 2) }] };
+  },
+);
+
 // ── Start ────────────────────────────────────────────────────────────────────
 
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error(`ATS MCP Server v5.0.0 — ${graphs.size} project(s), 8 tools ready`);
+  console.error(`ATS MCP Server v6.0.0 — ${graphs.size} project(s), 10 tools ready`);
 }
 
 main().catch(console.error);

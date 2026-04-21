@@ -1,6 +1,6 @@
 {
   "name": "ats-mcp-server",
-  "version": "5.0.0",
+  "version": "6.0.0",
   "description": "ATS Protocol MCP Server — Universal AI agent tools for flow graph management",
   "main": "dist/index.js",
   "type": "module",
