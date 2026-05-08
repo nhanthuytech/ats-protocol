@@ -32,6 +32,24 @@ This document describes how ATS V6 changes the daily interaction between you (th
 
 ## The Standard Workflow
 
+### Phase 0: Setup — Make sure the AI can call ATS tools
+
+Before the daily workflow below, run ATS setup once for your project:
+
+```bash
+npx -y ats-mcp-server@latest setup --project . --agent auto --runtime auto
+```
+
+Then verify the installation:
+
+```bash
+ats doctor
+```
+
+`setup` should configure the active AI agent (Codex, Claude Code, Cursor, Windsurf, or another MCP-compatible assistant), install/sync the runtime integration, and verify that `ats_init` is callable. See the [V7 one-command setup plan](../planV7.md) for the implementation plan.
+
+For Flutter, ATS stays CodeGen-first for performance: setup generates `lib/generated/ats/ats_generated.g.dart` and wires `AtsGenerated.init()` for you, instead of making runtime JSON parsing the default path.
+
 ### Phase 1: Instrument — Add traces once, keep them forever
 
 When AI writes a new class or touches an existing one without traces:
@@ -252,3 +270,4 @@ flow_graph.json  ──(ats sync)──▶  ats_generated.g.dart  ──(Hot Res
 - [Protocol Specification](../spec/protocol.md) — Schema, contracts, log format
 - [MCP Server](../packages/ats-mcp-server/README.md) — 10 tools with examples
 - [Migration V5 → V6](../planV6.md) — Upgrade guide
+- [V7 One-Command Setup Plan](../planV7.md) — 1-command install + automatic verify

@@ -30,3 +30,5 @@ Thumbs.db
 # ── Misc ──
 *.log
 *.tmp
+# Private notes and plans
+documents/

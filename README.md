@@ -1,9 +1,12 @@
-# ATS Protocol — Agentic Telemetry Standard
+# ATS Protocol — Universal AI-Agent Tracing & Smart Logging SDKs
 
 > **Turn your AI coding agent from a stateless debugger into a knowledge-accumulating partner.**
+> High-performance Smart Logging SDKs for **Flutter**, **Node.js**, **Python**, and **Swift**.
 
 [![CI](https://github.com/nhanthuytech/ats-protocol/actions/workflows/ci.yml/badge.svg)](https://github.com/nhanthuytech/ats-protocol/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+*(💡 GitHub Topics to add to repo: `flutter-sdk`, `nodejs-logging`, `python-tracing`, `swift-sdk`, `smart-logging`, `ai-agent`, `mcp-server`)*
 
 ---
 
@@ -13,9 +16,11 @@ Every time an AI agent touches your codebase, it starts from zero. It reads doze
 
 ## The Solution
 
-**ATS** gives your AI agent a persistent, version-controlled **knowledge graph** that maps every business flow to the exact classes and methods that implement it. The agent reads 200 tokens instead of 3,000. It activates structured logging with one command. It records what it learned — edges, sessions, known issues — so it never starts from scratch again.
+**ATS** provides a zero-cost, high-performance **Smart Logging SDK for Flutter** paired with a universal AI-Agent tracing protocol. 
 
-```
+It gives your AI agent a persistent, version-controlled **knowledge graph** that maps every business flow to the exact classes and methods that implement it. The agent reads 200 tokens instead of 3,000. It activates structured logging with one command. It records what it learned — edges, sessions, known issues — so it never starts from scratch again.
+
+```text
 ❌ Without ATS                         ✅ With ATS
 ───────────────────────────────        ──────────────────────────────
 AI grep(20 files) → 5,000 tokens      ats_context("FLOW") → 200 tokens
@@ -28,7 +33,7 @@ Tomorrow → starts from scratch         Sessions + edges → instant recall
 
 ## Architecture
 
-```
+```text
 ┌────────────────────────────────────────────────────────────────┐
 │  ATS Protocol  ·  spec/protocol.md  ·  flow_graph_schema.json │
 ├────────────────────────────────────────────────────────────────┤
@@ -36,13 +41,13 @@ Tomorrow → starts from scratch         Sessions + edges → instant recall
 │  ┌──────────────────────┐      ┌───────────────────────────┐  │
 │  │  MCP Server (TS)     │      │  Flutter SDK (Dart)       │  │
 │  │  10 tools for AI     │      │  ATS.trace() runtime      │  │
-│  │  ats_init = V6 skill │      │  pub.dev: ats_flutter      │  │
+│  │  ats doctor / setup  │      │  pub.dev: ats_flutter      │  │
 │  └──────────┬───────────┘      └─────────────┬─────────────┘  │
 │             │                                │                │
 │             └────────────┬───────────────────┘                │
 │                          │                                    │
 │              ┌───────────▼────────────┐                       │
-│              │  flow_graph.json (V6)  │                       │
+│              │  flow_graph.json       │                       │
 │              │  DAG knowledge graph   │                       │
 │              │  global_classes ·      │                       │
 │              │  flows · edges ·       │                       │
@@ -55,7 +60,7 @@ Tomorrow → starts from scratch         Sessions + edges → instant recall
 
 ## Monorepo Structure
 
-```
+```text
 ats-protocol/
 ├── spec/                          # Protocol specification
 │   ├── protocol.md                # Core protocol — schema, contracts, log format
@@ -70,8 +75,8 @@ ats-protocol/
 │   ├── antigravity/SKILL.md       # Gemini agent skill
 │   └── claude/CLAUDE.md           # Claude agent skill
 ├── packages/
-│   ├── ats_flutter/               # Dart/Flutter Runtime SDK
-│   └── ats-mcp-server/            # TypeScript MCP Server (10 tools)
+│   ├── ats_flutter/               # Dart/Flutter Smart Logging SDK
+│   └── ats-mcp-server/            # TypeScript MCP Server (10 tools & CLI)
 ├── .github/workflows/ci.yml       # CI: Flutter tests + TS build
 ├── CONTRIBUTING.md
 ├── LICENSE (MIT)
@@ -80,31 +85,26 @@ ats-protocol/
 
 ---
 
-## Quick Start
+## Quick Start (One Command Setup)
 
-### 1. Install Flutter SDK
+ATS is designed for zero-friction adoption. With a single command, ATS detects your environment, configures your AI agent (Cursor, Windsurf, Claude, Codex), and links the Flutter Smart Logging SDK.
 
+### 1. Setup Environment
 ```bash
-flutter pub add ats_flutter
-# AI will handle initialization via ats_init MCP tool
+npx -y ats-mcp-server@latest setup --project . --agent auto --runtime auto
 ```
+*This command auto-installs `ats_flutter`, configures your IDE's MCP settings, and generates the necessary sync files.*
 
-### 2. Initialize in your app
-
-```dart
-import 'package:ats_flutter/ats_flutter.dart';
-import 'generated/ats/ats_generated.g.dart';
-
-void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  AtsGenerated.init(); // O(1) — no JSON parsing, no async
-  runApp(MyApp());
-}
+### 2. Verify Health
+```bash
+npx ats doctor
 ```
+*Checks if the knowledge graph is valid, Flutter SDK is synced, and MCP tools are ready.*
 
 ### 3. Instrument your code
-
 ```dart
+import 'package:ats_flutter/ats_flutter.dart';
+
 class PaymentService {
   Future<void> processPayment(Order order) async {
     ATS.trace('PaymentService', 'processPayment', data: order.toJson());
@@ -113,14 +113,7 @@ class PaymentService {
 }
 ```
 
-### 4. Set up MCP Server (recommended)
-
-```bash
-cd packages/ats-mcp-server
-npm install && npx tsc
-```
-
-Connect to your IDE — [setup guide →](docs/setup.md)
+*For manual setup instructions, see our [Setup Guide](docs/setup.md).*
 
 ---
 
@@ -128,7 +121,7 @@ Connect to your IDE — [setup guide →](docs/setup.md)
 
 ### The Debug Cycle
 
-```
+```text
  YOU: "Checkout is broken"
   │
   ▼
@@ -165,16 +158,16 @@ Connect to your IDE — [setup guide →](docs/setup.md)
 
 | Tool | What it does | Tokens saved |
 |---|---|---|
-| **`ats_init`** | **V6 Skill Entry Point** — protocol instructions + graph overview + next_action on first call | ~1,200/session |
-| **`ats_context`** | Returns flow context — classes, methods, edges, global_classes, sessions — topologically sorted | ~2,800/call |
+| **`ats_init`** | **Skill Entry Point** — protocol instructions + graph overview + next_action | ~1,200/session |
+| **`ats_context`** | Returns flow context — classes, methods, edges, global_classes, sessions | ~2,800/call |
 | **`ats_activate`** | Activates flow logging + auto-syncs generated code + next_action hint | ~1,450/call |
 | **`ats_silence`** | Deactivates flow logging + auto-syncs + next_action hint | ~1,450/call |
 | **`ats_validate`** | Detects cycles, stale methods, invalid edges, invalid muted/priority | — |
 | **`ats_impact`** | Blast radius analysis: callers, callees, affected flows, risk level | — |
 | **`ats_instrument`** | Adds `ATS.trace()` skeleton to every public method in a file (Dart/TS/Python) | ~1,600/file |
-| **`ats_analyze`** | Parses console/file logs → discovers call chains → auto-adds edges + next_action hint | ~1,900/call |
-| **`ats_mute`** | **V6:** Mute/unmute specific methods without editing JSON | — |
-| **`ats_rank`** | **V6:** PageRank importance, bottleneck detection, community analysis, shortest path | — |
+| **`ats_analyze`** | Parses console/file logs → discovers call chains → auto-adds edges | ~1,900/call |
+| **`ats_mute`** | Mute/unmute specific methods without editing JSON | — |
+| **`ats_rank`** | PageRank importance, bottleneck detection, community analysis, shortest path | — |
 
 [Full tool documentation →](packages/ats-mcp-server/README.md)
 
@@ -182,7 +175,7 @@ Connect to your IDE — [setup guide →](docs/setup.md)
 
 ## V4 Log Format
 
-```
+```text
 [ATS][FLOW_NAME][#SEQ][dDEPTH] Class.method | {data}
 ```
 
@@ -192,17 +185,6 @@ Connect to your IDE — [setup guide →](docs/setup.md)
 | `dDEPTH` | Call stack depth — AI infers who called whom |
 
 These two fields together let AI reconstruct the full call chain from flat console output — no source-level tracing needed.
-
----
-
-## 2-Layer AI System (V6)
-
-| Layer | When loaded | Token cost | Contains |
-|---|---|---|---|
-| **Hook** | Every session (automatic) | ~30 | 4 rules — "call ats_init first, no print(), no remove trace, silence when done" |
-| **MCP Server** | When called | ~400 (init) / ~0 (tools) | `ats_init` delivers protocol + `next_action` hints guide workflow automatically |
-
-Intelligence lives in the MCP Server — not in text files. The hook is minimal. The server is smart. V6 adds global_classes, priority filtering, and rich edge metadata.
 
 ---
 
@@ -226,7 +208,7 @@ Six algorithms integrated in `core/dag.ts` for deep analysis:
 Interactive flow control dashboard with D3.js graph visualization:
 
 ```bash
-npx tsx packages/ats-mcp-server/src/web/web-server.ts .
+npx ats dashboard --project .
 # → http://localhost:4567
 ```
 
@@ -259,7 +241,7 @@ The MCP Server already supports instrumenting Dart, TypeScript, and Python sourc
 | [Setup Guide](docs/setup.md) | Install SDK, configure MCP, connect IDE |
 | [Developer + AI Workflow](docs/flow.md) | Day-to-day workflow with examples |
 | [Architecture & Internal Logic](docs/architecture.md) | How ATS works under the hood |
-| [Protocol Specification](spec/protocol.md) | V6 schema, contracts, log format |
+| [Protocol Specification](spec/protocol.md) | Schema, contracts, log format |
 | [MCP Server](packages/ats-mcp-server/README.md) | 10 tools with full input/output examples |
 | [Flutter SDK](packages/ats_flutter/README.md) | Dart API reference |
 | [Contributing](CONTRIBUTING.md) | How to contribute code, docs, or new SDKs |
