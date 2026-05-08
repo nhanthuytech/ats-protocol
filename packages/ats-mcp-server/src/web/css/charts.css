@@ -1,0 +1,46 @@
+/* ─── Overview & Chart Styles ─── */
+
+/* Metric Cards Grid */
+.overview-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.metric-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; transition: all 0.3s ease; position: relative; overflow: hidden; }
+.metric-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); border-color: var(--accent); }
+.metric-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+.metric-card.flows::before { background: linear-gradient(90deg, var(--accent), var(--purple)); }
+.metric-card.active-c::before { background: linear-gradient(90deg, var(--green), var(--cyan)); }
+.metric-card.methods::before { background: linear-gradient(90deg, var(--amber), #e3b341); }
+.metric-card.muted-c::before { background: linear-gradient(90deg, var(--red), #da3633); }
+.metric-card .mc-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600; }
+.metric-card .mc-value { font-size: 32px; font-weight: 700; margin-top: 8px; font-family: var(--font-mono); }
+.metric-card .mc-sub { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+.metric-card.flows .mc-value { color: var(--accent); }
+.metric-card.active-c .mc-value { color: var(--green); }
+.metric-card.methods .mc-value { color: var(--amber); }
+.metric-card.muted-c .mc-value { color: var(--red); }
+
+/* Charts Grid */
+.charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+.chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; min-height: 260px; }
+.chart-card .chart-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+
+/* Graph View */
+#graph-container { width: 100%; height: calc(100vh - 160px); }
+#graph-container svg { width: 100%; height: 100%; }
+.node-flow { fill: #1f6feb; stroke: #58a6ff; stroke-width: 2; cursor: pointer; }
+.node-flow.active { fill: #238636; stroke: #3fb950; }
+.node-method { fill: #21262d; stroke: #30363d; stroke-width: 1.5; cursor: pointer; }
+.node-method.muted { fill: #161b22; stroke: var(--text-muted); stroke-dasharray: 3,3; opacity: 0.5; }
+.node-method.global { fill: #1a1f36; stroke: #58a6ff; stroke-width: 2; stroke-dasharray: 5,3; }
+.node-label { font-size: 11px; fill: var(--text-primary); text-anchor: middle; pointer-events: none; font-weight: 500; }
+.node-label-method { font-size: 9px; fill: var(--text-secondary); }
+.link { stroke-opacity: 0.4; fill: none; }
+.link.depends_on { stroke: #58a6ff; stroke-width: 2; }
+.link.calls { stroke: #3fb950; stroke-width: 1.5; }
+.link.delegates { stroke: #d29922; stroke-width: 1.5; }
+.link.emits { stroke: #f85149; stroke-width: 1.5; }
+.link.navigates { stroke: #bc8cff; stroke-width: 1.5; }
+.arrow { fill: #8b949e; }
+
+/* Tooltip */
+#tooltip { position: fixed; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 16px; font-size: 12px; pointer-events: none; opacity: 0; transition: opacity 0.15s; max-width: 300px; z-index: 20; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+#tooltip .tt-title { font-weight: 600; color: var(--accent); margin-bottom: 4px; }
+#tooltip .tt-detail { color: var(--text-secondary); margin: 2px 0; }
